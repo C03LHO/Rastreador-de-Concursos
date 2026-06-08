@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("DB_PATH", "concursos.db")
 
 # Marca do modelo de dados / fonte atual. Se mudar, os dados antigos (por
 # exemplo, os da API anterior, que nao tinham link) sao limpos no boot.
-VERSAO_FONTE = "concursosnobrasil-v2"
+VERSAO_FONTE = "concursosnobrasil-v3"
 
 
 def remover_acentos(texto):
@@ -51,6 +51,8 @@ def iniciar_banco():
                 vagas TEXT,
                 tipo TEXT,
                 data TEXT,
+                fonte TEXT,
+                chave TEXT,
                 data_inicio TEXT,
                 data_fim TEXT,
                 link_oficial TEXT,
@@ -74,12 +76,22 @@ def iniciar_banco():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS favoritos (
+                hash TEXT PRIMARY KEY,
+                criado_em TEXT,
+                prazo_avisado TEXT
+            )
+            """
+        )
 
         # Migracao: adiciona colunas novas em bancos criados em versoes antigas.
         existentes = {r["name"] for r in conn.execute("PRAGMA table_info(concursos)")}
         novas = (
-            "titulo", "data", "data_inicio", "data_fim", "link_oficial",
-            "pdf_url", "resumo", "detalhes_json", "blob_detalhe", "detalhe_em",
+            "titulo", "data", "fonte", "chave", "data_inicio", "data_fim",
+            "link_oficial", "pdf_url", "resumo", "detalhes_json",
+            "blob_detalhe", "detalhe_em",
         )
         for coluna in novas:
             if coluna not in existentes:
@@ -124,13 +136,14 @@ def upsert_concurso(item):
                 """
                 UPDATE concursos
                 SET uf = ?, orgao = ?, titulo = ?, situacao = ?, link = ?,
-                    vagas = ?, tipo = ?, data = ?, blob = ?, raw_json = ?,
-                    atualizado_em = ?
+                    vagas = ?, tipo = ?, data = ?, fonte = ?, chave = ?,
+                    blob = ?, raw_json = ?, atualizado_em = ?
                 WHERE hash = ?
                 """,
                 (
                     item["uf"], item["orgao"], item["titulo"], item["situacao"],
                     item["link"], item["vagas"], item["tipo"], item["data"],
+                    item.get("fonte", ""), item.get("chave", ""),
                     item["blob"], item["raw_json"], agora, item["hash"],
                 ),
             )
@@ -140,13 +153,14 @@ def upsert_concurso(item):
                 """
                 INSERT INTO concursos
                     (hash, uf, orgao, titulo, situacao, link, vagas, tipo, data,
-                     blob, raw_json, primeira_vez, atualizado_em)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     fonte, chave, blob, raw_json, primeira_vez, atualizado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item["hash"], item["uf"], item["orgao"], item["titulo"],
                     item["situacao"], item["link"], item["vagas"], item["tipo"],
-                    item["data"], item["blob"], item["raw_json"], agora, agora,
+                    item["data"], item.get("fonte", ""), item.get("chave", ""),
+                    item["blob"], item["raw_json"], agora, agora,
                 ),
             )
         conn.commit()
@@ -255,11 +269,26 @@ def buscar_concursos(uf=None, area_palavras=None, cidade=None, cargo=None,
         for palavra in area_palavras:
             params.append(f"% {remover_acentos(palavra.lower().strip())} %")
 
-    sql = "SELECT * FROM concursos"
+    base = "SELECT * FROM concursos"
     if clausulas:
-        sql += " WHERE " + " AND ".join(clausulas)
-    # Mostra primeiro os mais recentes (pela data de publicacao) e limita.
-    sql += " ORDER BY data DESC, atualizado_em DESC LIMIT ?"
+        base += " WHERE " + " AND ".join(clausulas)
+
+    # Deduplica entre fontes pela "chave" (orgao normalizado + uf). Quando o
+    # mesmo concurso aparece em mais de uma fonte, mantemos um so, preferindo o
+    # Concursos no Brasil (que tem enriquecimento), depois os abertos e os ja
+    # enriquecidos. Linhas sem chave nao se agrupam (usam o proprio hash).
+    sql = f"""
+        SELECT * FROM (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY COALESCE(NULLIF(chave, ''), hash)
+                ORDER BY (data_fim IS NOT NULL AND data_fim <> '') DESC,
+                         (fonte = 'Concursos no Brasil') DESC,
+                         (tipo = 'aberto') DESC
+            ) AS _rn FROM ({base})
+        )
+        WHERE _rn = 1
+        ORDER BY data DESC, atualizado_em DESC LIMIT ?
+    """
     params.append(int(limite))
 
     conn = conectar()
@@ -276,6 +305,88 @@ def contar_total():
     try:
         cur = conn.execute("SELECT COUNT(*) AS n FROM concursos")
         return cur.fetchone()["n"]
+    finally:
+        conn.close()
+
+
+def alternar_favorito(hash_):
+    # Adiciona ou remove um favorito. Retorna True se ficou favoritado.
+    conn = conectar()
+    try:
+        cur = conn.execute("SELECT 1 FROM favoritos WHERE hash = ?", (hash_,))
+        if cur.fetchone():
+            conn.execute("DELETE FROM favoritos WHERE hash = ?", (hash_,))
+            conn.commit()
+            return False
+        conn.execute(
+            "INSERT INTO favoritos (hash, criado_em) VALUES (?, ?)",
+            (hash_, datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def hashes_favoritos():
+    # Lista os hashes favoritados (para a tela marcar as estrelas).
+    conn = conectar()
+    try:
+        cur = conn.execute("SELECT hash FROM favoritos")
+        return [r["hash"] for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def listar_favoritos():
+    # Devolve os concursos favoritados, ordenados pelo prazo (os que encerram
+    # antes primeiro; sem data por ultimo).
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """
+            SELECT c.* FROM concursos c
+            JOIN favoritos f ON f.hash = c.hash
+            ORDER BY CASE WHEN c.data_fim IS NULL OR c.data_fim = '' THEN 1 ELSE 0 END,
+                     c.data_fim ASC
+            """
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def favoritos_para_avisar(dias):
+    # Favoritos cujo prazo encerra dentro de N dias e que ainda nao foram
+    # avisados hoje. Usado para o lembrete de prazo via ntfy.
+    hoje = datetime.now().date().isoformat()
+    from datetime import timedelta
+    limite = (datetime.now().date() + timedelta(days=int(dias))).isoformat()
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """
+            SELECT c.* FROM concursos c
+            JOIN favoritos f ON f.hash = c.hash
+            WHERE c.data_fim >= ? AND c.data_fim <= ?
+              AND (f.prazo_avisado IS NULL OR f.prazo_avisado <> ?)
+            """,
+            (hoje, limite, hoje),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def marcar_prazo_avisado(hash_):
+    # Marca que o aviso de prazo deste favorito ja foi enviado hoje.
+    conn = conectar()
+    try:
+        conn.execute(
+            "UPDATE favoritos SET prazo_avisado = ? WHERE hash = ?",
+            (datetime.now().date().isoformat(), hash_),
+        )
+        conn.commit()
     finally:
         conn.close()
 

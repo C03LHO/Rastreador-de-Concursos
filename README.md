@@ -46,6 +46,8 @@ Procurar concurso é chato: a informação fica espalhada, alguns sites caem e n
 - 🧠 **Informação rica por concurso**: banca, escolaridade, salário, taxa de inscrição e data da prova, extraídos automaticamente.
 - 📄 **Leitura automática do edital em PDF** (quando encontrado) e botão para baixar.
 - 🎓 **Treinar com provas anteriores**: busca provas e gabaritos no PCI Concursos por cargo, com link para baixar. Cada concurso também tem um atalho de provas anteriores.
+- ⭐ **Favoritar e acompanhar prazos**: salve concursos e veja-os ordenados pelo prazo de inscrição, com lembrete por push quando o prazo se aproxima.
+- 🗂️ **Mais de uma fonte**: agrega o **Concursos no Brasil** e o **PCI Concursos**, deduplicando automaticamente o mesmo concurso entre as fontes.
 - 🔔 **Perfil e notificações**: você escolhe estados, órgãos/cidades e áreas de interesse, e recebe um push no celular (via **ntfy**) quando surge um concurso novo do seu perfil.
 - 🌙 **Leitura diária às 4h**: a parte pesada (ler todos os editais) roda uma vez por dia de madrugada, configurável.
 - 🧭 **Foco na região do Pará**: atalhos rápidos para Belém, Marabá, Parauapebas, Canaã dos Carajás, Curionópolis e outras.
@@ -120,6 +122,8 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `MAX_PREVISTOS` | `500` | Quantos concursos previstos guardar (os mais recentes). |
 | `LER_PDF` | `1` | Liga/desliga a leitura automática do PDF do edital (`0` desliga). |
 | `LOTE_DETALHES` | `20` | Quantos concursos ler por lote no enriquecimento. |
+| `HORA_AVISO_PRAZO` | `8` | Hora do lembrete diário de prazo dos favoritos. |
+| `PRAZO_AVISO_DIAS` | `3` | Avisar quando um favorito encerrar em até N dias. |
 
 ## 🔌 API REST
 
@@ -133,6 +137,8 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `GET` | `/api/perfil` | Lê o perfil de interesse salvo. |
 | `POST` | `/api/perfil` | Salva o perfil (estados, termos, áreas e ntfy). |
 | `POST` | `/api/notificar-teste` | Dispara uma notificação de teste no ntfy. |
+| `GET` | `/api/favoritos` | Lista os concursos favoritados (ordenados por prazo). |
+| `POST` | `/api/favoritos/{hash}` | Favorita ou desfavorita um concurso. |
 | `POST` | `/api/coletar` | Força uma coleta imediata (em segundo plano). |
 
 **Filtros de `/api/concursos`** (todos opcionais, combinados em E lógico): `uf`, `area`, `cidade`, `cargo`, `tipo` (`aberto`/`previsto`), `q` (busca livre) e `limite`. A resposta é `{ "total": N, "concursos": [...] }`.
@@ -169,6 +175,13 @@ Para ativar:
    e um **tópico** único e secreto (ex: `meus-concursos-9f3a`).
 3. Assine esse mesmo tópico no app ntfy. Use "Enviar teste" para confirmar.
 
+## ⭐ Favoritos e prazos
+
+Toque na **estrela** de qualquer concurso para salvá-lo. Na tela **Favoritos**
+(ícone de estrela no topo) eles aparecem ordenados pelo prazo de inscrição (o que
+encerra antes vem primeiro). Com as notificações ativas, você recebe um lembrete
+por push quando o prazo de um favorito estiver perto (padrão: 3 dias antes).
+
 ## 🎓 Treinar com provas
 
 Na tela **Treinar** (ícone de livro no topo), busque por um cargo (ex: `professor`,
@@ -204,7 +217,12 @@ Os dados vêm do site gratuito **Concursos no Brasil** (`https://concursosnobras
 - Previstos (página nacional, pegamos os mais recentes): `/concursos/previstos/`
 - Detalhe de cada concurso: a própria página do concurso, de onde extraímos a data de encerramento, o link oficial e o PDF do edital.
 
-As **provas anteriores** (aba Treinar) vêm do **PCI Concursos**
+Uma **segunda fonte de listagem**, o **PCI Concursos**
+(`https://www.pciconcursos.com.br/concursos/`), amplia a cobertura. O mesmo concurso
+que aparece nas duas fontes é deduplicado por uma chave normalizada (órgão + UF, com
+"Pref." expandido para "Prefeitura" etc.), mantendo a versão mais completa.
+
+As **provas anteriores** (aba Treinar) também vêm do PCI
 (`https://www.pciconcursos.com.br/provas/`), apenas listando e linkando (sem baixar
 os PDFs, respeitando o `robots.txt`).
 
@@ -216,8 +234,9 @@ A coleta é **defensiva**: se a estrutura de uma página mudar, aquele item é i
 - [x] Leitura automática do edital em PDF.
 - [x] Perfil de interesse com notificação por ntfy.
 - [x] Treinar com provas anteriores (PCI Concursos).
-- [ ] Segundo agregador de fontes para ampliar a cobertura.
-- [ ] Favoritar concursos e acompanhar prazos.
+- [x] Segundo agregador de fontes (PCI) com deduplicação.
+- [x] Favoritar concursos e acompanhar prazos.
+- [ ] Mais agregadores (Estuda Grátis, Folha Dirigida, etc.).
 - [ ] Exportar resultados (CSV / JSON).
 
 ## 📄 Licença

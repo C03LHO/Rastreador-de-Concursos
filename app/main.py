@@ -57,6 +57,18 @@ def _agendar():
         coalesce=True,
         replace_existing=True,
     )
+    # Lembrete diario de prazo dos concursos favoritados (de manha).
+    hora_aviso = int(os.environ.get("HORA_AVISO_PRAZO", "8"))
+    scheduler.add_job(
+        collector.verificar_prazos_favoritos,
+        "cron",
+        hour=hora_aviso,
+        minute=0,
+        id="aviso_prazos",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
     scheduler.start()
     print(
         f"[scheduler] coleta a cada {intervalo}h, "
@@ -184,3 +196,19 @@ def api_notificar_teste():
 def api_provas(q: str = Query(default=None, description="Cargo ou termo")):
     # Lista provas anteriores do PCI Concursos para treinar (por cargo/termo).
     return collector.buscar_provas(q or "")
+
+
+@app.get("/api/favoritos")
+def api_favoritos():
+    # Devolve os hashes favoritados (para marcar estrelas) e a lista completa
+    # de concursos favoritados, ordenada por prazo.
+    return {
+        "hashes": db.hashes_favoritos(),
+        "concursos": db.listar_favoritos(),
+    }
+
+
+@app.post("/api/favoritos/{hash_}")
+def api_favoritar(hash_: str):
+    # Alterna o favorito de um concurso. Retorna se ficou favoritado.
+    return {"favorito": db.alternar_favorito(hash_)}

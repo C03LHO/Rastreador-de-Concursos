@@ -148,7 +148,22 @@ def parse_linha(row, uf_padrao, tipo):
     }
 
 
-def _para_linha_db(item):
+def _chave(orgao, uf):
+    # Chave normalizada (orgao + uf) para deduplicar entre fontes diferentes.
+    # Expande abreviacoes comuns (Pref. -> prefeitura) e tira o "/UF" do nome,
+    # para que "Pref. Maravilha/SC" e "Prefeitura de Maravilha" virem a mesma.
+    s = db.remover_acentos((orgao or "").lower())
+    s = re.sub(r"\bpref\.?\b", "prefeitura", s)
+    s = re.sub(r"\bcam\.?\b", "camara", s)
+    s = re.sub(r"\bgov\.?\b", "governo", s)
+    s = re.sub(r"/[a-z]{2}\b", " ", s)
+    s = re.sub(r"\b(de|da|do|das|dos|e)\b", " ", s)
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return f"{s}|{(uf or '').lower()}"
+
+
+def _para_linha_db(item, fonte="Concursos no Brasil"):
     # Converte o item lido para o formato gravado no banco.
     link = item["link"]
     # Dedupe pelo link, que e unico por concurso.
@@ -163,9 +178,10 @@ def _para_linha_db(item):
     blob = re.sub(r"[^0-9a-z ]+", " ", blob)
     blob = re.sub(r"\s+", " ", blob).strip()
 
+    uf = (item["uf"] or "br").lower()
     return {
         "hash": h,
-        "uf": (item["uf"] or "br").lower(),
+        "uf": uf,
         "orgao": item["orgao"],
         "titulo": item["titulo"],
         "situacao": situacao,
@@ -173,6 +189,8 @@ def _para_linha_db(item):
         "vagas": item["vagas"],
         "tipo": item["tipo"],
         "data": item["data"],
+        "fonte": fonte,
+        "chave": _chave(item["orgao"], uf),
         "blob": blob,
         "raw_json": json.dumps(item, ensure_ascii=False),
     }
@@ -283,6 +301,12 @@ def coletar_tudo():
             total_itens += total
             print(f"[coleta] {uf}: {total} abertos, {novos} novos")
             time.sleep(PAUSA_SEGUNDOS)
+
+        # Segunda fonte: PCI Concursos (amplia a cobertura).
+        novos, total = coletar_pci(client, novos_itens)
+        total_novos += novos
+        total_itens += total
+        time.sleep(PAUSA_SEGUNDOS)
 
     fim = datetime.now().isoformat(timespec="seconds")
     resultado = f"{total_itens} itens vistos, {total_novos} novos"
@@ -692,6 +716,29 @@ def notificar_novos(novos_itens):
     print(f"[notify] {len(matches)} concursos notificados")
 
 
+def verificar_prazos_favoritos():
+    # Lembrete: avisa, via ntfy, quando um concurso favoritado esta perto de
+    # encerrar as inscricoes. Roda uma vez por dia.
+    perfil = carregar_perfil()
+    if not perfil.get("notificar") or not perfil.get("ntfy_topico"):
+        return
+    dias = int(os.environ.get("PRAZO_AVISO_DIAS", "3"))
+    favoritos = db.favoritos_para_avisar(dias)
+    from datetime import date
+    for c in favoritos:
+        try:
+            restam = (date.fromisoformat(c["data_fim"]) - date.today()).days
+        except Exception:
+            restam = None
+        quando = "hoje" if restam == 0 else (f"em {restam} dias" if restam else "em breve")
+        titulo = f"Prazo: {c.get('orgao','')}"
+        corpo = f"As inscricoes encerram {quando} ({c.get('data_fim','')})."
+        _enviar_ntfy(perfil, titulo, corpo, c.get("link", ""))
+        db.marcar_prazo_avisado(c["hash"])
+    if favoritos:
+        print(f"[prazo] avisados {len(favoritos)} favoritos")
+
+
 def enviar_notificacao_teste(perfil):
     # Envia uma notificacao de teste para validar a configuracao do ntfy.
     return _enviar_ntfy(
@@ -749,3 +796,91 @@ def buscar_provas(termo, limite=40):
         if len(provas) >= limite:
             break
     return {"url": url, "provas": provas}
+
+
+# ----------------------------------------------------------------------------
+# Segunda fonte: PCI Concursos (lista de concursos abertos)
+# ----------------------------------------------------------------------------
+
+PCI_CONCURSOS_URL = f"{PCI_BASE}/concursos/"
+
+
+def _parse_pci(bloco):
+    # Le um bloco de concurso da listagem do PCI. Retorna o item normalizado.
+    a = re.search(r'<a\s+href="([^"]+)"[^>]*?title="([^"]*)"[^>]*>(.*?)</a>', bloco, re.S)
+    if not a:
+        return None
+    link = a.group(1)
+    if "pciconcursos" not in link:
+        return None
+    titulo = re.sub(r"\s+", " ", a.group(2)).strip()
+    orgao = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", a.group(3))).strip()
+    if not orgao:
+        return None
+
+    texto = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", bloco)).strip()
+
+    mv = re.search(r"(\d[\d.]*)\s+vagas?", texto)
+    vagas = (mv.group(1) + " vagas") if mv else ""
+
+    ms = re.search(r"R\$\s*[\d.,]+", texto)
+
+    md = re.search(r"(\d{2})/(\d{2})/(\d{4})", texto)
+    data_fim = f"{md.group(3)}-{md.group(2)}-{md.group(1)}" if md else ""
+
+    niveis = []
+    for rotulo, padrao in (("fundamental", "Fundamental"), ("medio", r"M[ée]dio"),
+                           ("tecnico", r"T[ée]cnico"), ("superior", "Superior")):
+        if re.search(r"\b" + padrao + r"\b", texto):
+            niveis.append(rotulo)
+
+    muf = re.search(r"[/\-]\s*([A-Z]{2})\b", orgao + " | " + titulo)
+    uf = muf.group(1).lower() if muf else "br"
+
+    detalhes = {}
+    if niveis:
+        detalhes["escolaridade"] = ", ".join(dict.fromkeys(niveis))
+    if ms:
+        detalhes["salario"] = ms.group(0)
+
+    return {
+        "orgao": orgao, "titulo": titulo, "vagas": vagas, "link": link,
+        "uf": uf, "data": "", "tipo": "aberto",
+        "data_fim": data_fim, "detalhes": detalhes,
+    }
+
+
+def coletar_pci(client, novos_out=None):
+    # Coleta a lista de concursos abertos do PCI Concursos (segunda fonte).
+    # Os itens ja vem com prazo e escolaridade, entao gravamos o detalhe na hora
+    # e marcamos como lidos (nao precisam do enriquecimento por pagina).
+    try:
+        r = client.get(PCI_CONCURSOS_URL, headers={"User-Agent": PCI_UA},
+                       timeout=30, follow_redirects=True)
+        html = r.content.decode("utf-8", "replace")
+    except Exception as erro:
+        print(f"[pci] falha: {erro}")
+        return 0, 0
+
+    novos = 0
+    total = 0
+    for bloco in html.split('<div class="ca">')[1:]:
+        item = _parse_pci(bloco)
+        if not item:
+            continue
+        total += 1
+        norm = _para_linha_db(item, fonte="PCI Concursos")
+        novo = db.upsert_concurso(norm)
+        db.atualizar_detalhe(norm["hash"], {
+            "data_inicio": "", "data_fim": item["data_fim"],
+            "link_oficial": "", "pdf_url": "", "resumo": "",
+            "detalhes_json": json.dumps(item.get("detalhes", {}), ensure_ascii=False),
+            "blob_detalhe": _folder_blob(" ".join(str(v) for v in item.get("detalhes", {}).values())),
+        })
+        if novo:
+            novos += 1
+            if novos_out is not None:
+                novos_out.append(item)
+
+    print(f"[pci] {total} itens, {novos} novos")
+    return novos, total

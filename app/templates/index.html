@@ -69,12 +69,12 @@
     .appbar {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 12px 16px 8px;
+      gap: 7px;
+      padding: 12px 14px 8px;
     }
-    .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .marca img { width: 30px; height: 30px; border-radius: 8px; }
-    .marca .nome { font-weight: 700; font-size: 1.15rem; letter-spacing: -0.4px; }
+    .marca { display: flex; align-items: center; gap: 9px; min-width: 0; margin-right: auto; overflow: hidden; }
+    .marca img { width: 30px; height: 30px; border-radius: 8px; flex: none; }
+    .marca .nome { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .marca .nome b { color: var(--acento); }
 
     .status {
@@ -86,9 +86,8 @@
     .status .pulo { color: var(--texto); font-weight: 600; }
 
     .btn-icone {
-      margin-left: auto;
       flex: none;
-      width: 40px; height: 40px;
+      width: 38px; height: 38px;
       display: grid; place-items: center;
       border-radius: 50%;
       border: 1px solid var(--borda);
@@ -238,6 +237,17 @@
     }
     .tag-aberto { color: var(--aberto); background: var(--aberto-bg); }
     .tag-previsto { color: var(--previsto); background: var(--previsto-bg); }
+
+    .topo-dir { display: flex; align-items: center; gap: 8px; flex: none; }
+    /* Botao estrela (favoritar). */
+    .estrela {
+      flex: none; width: 32px; height: 32px; border-radius: 50%;
+      border: none; background: transparent; cursor: pointer;
+      display: grid; place-items: center; color: var(--suave); padding: 0;
+    }
+    .estrela svg { width: 20px; height: 20px; }
+    .estrela.on { color: var(--previsto); }
+    .estrela.on svg { fill: var(--previsto); }
 
     .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .pill {
@@ -431,6 +441,9 @@
         <img src="/static/icon-192.png" alt="" />
         <div class="nome">Con<b>cursos</b></div>
       </div>
+      <button class="btn-icone" id="btn-favoritos" title="Meus favoritos e prazos" aria-label="Favoritos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      </button>
       <button class="btn-icone" id="btn-treinar" title="Treinar com provas anteriores" aria-label="Treinar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       </button>
@@ -535,6 +548,20 @@
         <b>topico</b> acima e pronto. Tambem da para rodar o ntfy no seu Umbrel
         e apontar o servidor para ele.
       </p>
+    </div>
+  </section>
+
+  <!-- Tela Favoritos (acompanhar prazos) -->
+  <section class="view" id="view-favoritos" aria-hidden="true">
+    <div class="view-topo">
+      <button class="btn-icone" data-fechar-view="view-favoritos" aria-label="Voltar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <div class="view-titulo">Favoritos e prazos</div>
+    </div>
+    <div class="view-corpo">
+      <p class="dica">Seus concursos salvos, ordenados pelo prazo de inscricao (os que encerram antes aparecem primeiro). Ative as notificacoes no Perfil para receber um lembrete quando o prazo estiver perto.</p>
+      <div class="grade" id="favoritos-lista" style="padding:8px 0;"></div>
     </div>
   </section>
 
@@ -703,7 +730,7 @@
       }
       $("resumo").textContent = total + " concurso" + (total > 1 ? "s" : "") + " encontrado" + (total > 1 ? "s" : "");
       grade.innerHTML = "";
-      lista.forEach((c, i) => grade.appendChild(card(c, i)));
+      lista.forEach((c) => grade.appendChild(card(c)));
     }
 
     // Calcula o status do prazo de inscricao a partir da data de encerramento.
@@ -728,7 +755,7 @@
       return "";
     }
 
-    function card(c, i) {
+    function card(c) {
       const el = document.createElement("div");
       el.className = "card";
       const aberto = c.tipo === "aberto";
@@ -737,7 +764,10 @@
       el.innerHTML = `
         <div class="card-topo">
           <h3>${esc(orgao)}</h3>
-          <span class="tag ${aberto ? "tag-aberto" : "tag-previsto"}">${aberto ? "Aberto" : "Previsto"}</span>
+          <div class="topo-dir">
+            ${estrelaHTML(c.hash)}
+            <span class="tag ${aberto ? "tag-aberto" : "tag-previsto"}">${aberto ? "Aberto" : "Previsto"}</span>
+          </div>
         </div>
         ${c.titulo ? `<div class="desc">${esc(c.titulo)}</div>` : ""}
         <div class="meta">
@@ -747,9 +777,71 @@
         </div>
         <div class="ver-mais">Toque para ver detalhes &rsaquo;</div>
       `;
-      el.addEventListener("click", () => abrirDetalhe(i));
+      el.addEventListener("click", () => abrirDetalhe(c));
+      ligarEstrelas(el);
       return el;
     }
+
+    // ---------- Favoritos ----------
+    let favoritosSet = new Set();
+
+    function estrelaHTML(hash) {
+      const on = favoritosSet.has(hash);
+      return `<button class="estrela ${on ? "on" : ""}" data-fav="${hash}" aria-label="Favoritar" title="Favoritar">
+        <svg viewBox="0 0 24 24" fill="${on ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      </button>`;
+    }
+
+    function ligarEstrelas(raiz) {
+      raiz.querySelectorAll(".estrela").forEach((b) => {
+        if (b.dataset.ligado) return;
+        b.dataset.ligado = "1";
+        b.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const hash = b.dataset.fav;
+          try {
+            const r = await (await fetch("/api/favoritos/" + hash, { method: "POST" })).json();
+            if (r.favorito) favoritosSet.add(hash); else favoritosSet.delete(hash);
+            document.querySelectorAll(`.estrela[data-fav="${hash}"]`).forEach((s) => {
+              s.classList.toggle("on", r.favorito);
+              const svg = s.querySelector("svg");
+              if (svg) svg.setAttribute("fill", r.favorito ? "currentColor" : "none");
+            });
+            if (!r.favorito) {
+              const card = b.closest("#favoritos-lista .card");
+              if (card) card.remove();
+            }
+          } catch (e) {}
+        });
+      });
+    }
+
+    async function carregarFavoritos() {
+      try {
+        const d = await (await fetch("/api/favoritos")).json();
+        favoritosSet = new Set(d.hashes || []);
+      } catch (e) {}
+    }
+
+    async function abrirFavoritos() {
+      abrirView("view-favoritos");
+      const box = $("favoritos-lista");
+      box.innerHTML = '<p class="dica">Carregando...</p>';
+      try {
+        const d = await (await fetch("/api/favoritos")).json();
+        favoritosSet = new Set(d.hashes || []);
+        const lista = d.concursos || [];
+        if (!lista.length) {
+          box.innerHTML = '<div class="estado"><span class="emoji">&#11088;</span>Voce ainda nao favoritou nenhum concurso.<br>Toque na estrela de um concurso para salva-lo aqui.</div>';
+          return;
+        }
+        box.innerHTML = "";
+        lista.forEach((c) => box.appendChild(card(c)));
+      } catch (e) {
+        box.innerHTML = '<p class="dica">Erro ao carregar os favoritos.</p>';
+      }
+    }
+    $("btn-favoritos").addEventListener("click", abrirFavoritos);
 
     // ---------- Detalhe (bottom sheet) ----------
     function linkBusca(c) {
@@ -758,8 +850,7 @@
       return "https://www.google.com/search?q=" + encodeURIComponent(termo.trim());
     }
 
-    function abrirDetalhe(i) {
-      const c = resultados[i];
+    function abrirDetalhe(c) {
       if (!c) return;
       const aberto = c.tipo === "aberto";
 
@@ -773,6 +864,7 @@
           <span class="tag ${aberto ? "tag-aberto" : "tag-previsto"}">${aberto ? "Inscricoes abertas" : "Previsto"}</span>
           <span class="pill uf">${esc((c.uf || "").toUpperCase())}</span>
           ${prazo ? `<span class="pill ${prazo.classe}">${prazo.texto}</span>` : ""}
+          ${estrelaHTML(c.hash)}
         </div>
 
         ${c.titulo ? `<p class="titulo-det">${esc(c.titulo)}</p>` : ""}
@@ -780,6 +872,7 @@
         ${periodo ? `<div class="info"><span class="rotulo">Periodo de inscricao</span><span class="valor">${periodo}</span></div>` : ""}
         <div class="info"><span class="rotulo">Vagas / Cargo</span><span class="valor">${esc(c.vagas || "nao informado")}</span></div>
         ${linhasDetalhe(c)}
+        <div class="info"><span class="rotulo">Fonte</span><span class="valor">${esc(c.fonte || "Concursos no Brasil")}</span></div>
 
         <div class="acoes-sheet">
           ${linkReal
@@ -818,6 +911,7 @@
         fecharSheet();
         abrirTreinar(adivinharCargo(c));
       });
+      ligarEstrelas($("sheet-conteudo"));
       abrirSheet();
     }
 
@@ -1121,7 +1215,7 @@
 
     // Botao voltar do celular fecha as telas abertas.
     window.addEventListener("popstate", () => {
-      ["view-treinar", "view-perfil"].forEach((id) => {
+      ["view-treinar", "view-perfil", "view-favoritos"].forEach((id) => {
         if ($(id).classList.contains("aberto")) fecharView(id, true);
       });
     });
@@ -1169,7 +1263,7 @@
     montarAtualizar();
     montarPerfil();
     atualizarStatus();
-    buscar();
+    carregarFavoritos().then(() => buscar());
     acompanharColeta();
     registrarSW();
     setInterval(atualizarStatus, 60000);
