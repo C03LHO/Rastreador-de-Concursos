@@ -1,0 +1,24 @@
+services:
+  concursos:
+    build: .
+    container_name: rastreador-concursos
+    ports:
+      - "8723:8723"
+    environment:
+      # Caminho do banco dentro do container, dentro do volume persistido.
+      - DB_PATH=/data/concursos.db
+      # Intervalo da coleta automatica em horas.
+      - INTERVALO_HORAS=1
+      # Quantos concursos previstos (no maximo) guardar, dos mais recentes.
+      - MAX_PREVISTOS=500
+      # Hora (0-23, fuso America/Belem) da leitura diaria completa dos editais.
+      - HORA_LEITURA=4
+      # Leitura automatica do PDF do edital (1 liga, 0 desliga).
+      - LER_PDF=1
+    volumes:
+      # Volume nomeado para o arquivo SQLite sobreviver a recriacao do container.
+      - concursos_dados:/data
+    restart: unless-stopped
+
+volumes:
+  concursos_dados:

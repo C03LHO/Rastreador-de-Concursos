@@ -1,0 +1,19 @@
+# Banco local gerado fora do Docker
+*.db
+concursos.db
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Config local de preview do Claude Code
+.claude/
+
+# Arquivos temporarios de investigacao
+_pg_*.html
+_amostra.json
+_gen_icons.py
