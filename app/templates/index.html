@@ -206,6 +206,7 @@
     .segment button.ativo { background: var(--card-2); color: var(--texto); }
 
     .resumo { color: var(--suave); font-size: 0.84rem; padding: 16px 16px 6px; max-width: 1100px; margin: 0 auto; }
+    .toggle-enc { background: none; border: none; color: var(--acento); font: inherit; font-size: 0.84rem; cursor: pointer; text-decoration: underline; padding: 0; }
 
     /* Lista de cards. */
     .grade {
@@ -594,9 +595,7 @@
       "mg","pa","pb","pr","pe","pi","rj","rn","rs","ro","rr","sc","sp","se","to"];
 
     // Estado atual dos filtros.
-    const filtros = { q: "", area: "", uf: "", tipo: "" };
-    // Cache dos resultados para abrir o detalhe sem nova requisicao.
-    let resultados = [];
+    const filtros = { q: "", area: "", uf: "", tipo: "", encerrados: false };
 
     // ---------- Montagem dos filtros ----------
     function montarUFs() {
@@ -697,6 +696,7 @@
       if (filtros.area) p.append("area", filtros.area);
       if (filtros.uf) p.append("uf", filtros.uf);
       if (filtros.tipo) p.append("tipo", filtros.tipo);
+      if (filtros.encerrados) p.append("encerrados", "1");
       p.append("limite", "300");
       return p.toString();
     }
@@ -713,24 +713,46 @@
         const r = await fetch("/api/concursos?" + montarQuery());
         const d = await r.json();
         $("offline").classList.toggle("mostra", !!d.offline);
-        resultados = d.concursos || [];
-        renderizar(resultados, d.total || 0);
+        renderizar(d.concursos || [], d.total || 0);
       } catch (e) {
         $("grade").innerHTML = '<div class="estado"><span class="emoji">!</span>Erro ao buscar. Puxe para baixo e tente de novo.</div>';
         $("resumo").textContent = "";
       }
     }
 
+    function temFiltro() {
+      return !!(filtros.q || filtros.area || filtros.uf || filtros.tipo || filtros.encerrados);
+    }
+
     function renderizar(lista, total) {
       const grade = $("grade");
+      const toggle = `<button class="toggle-enc" id="toggle-enc">${filtros.encerrados ? "ocultar encerrados" : "incluir encerrados"}</button>`;
+      const limpar = temFiltro() ? ` &middot; <button class="toggle-enc" id="limpar-tudo">limpar filtros</button>` : "";
       if (!lista.length) {
-        $("resumo").textContent = "";
-        grade.innerHTML = '<div class="estado"><span class="emoji">&#128269;</span>Nenhum concurso encontrado.<br>Tente outra busca ou limpe os filtros.</div>';
-        return;
+        $("resumo").innerHTML = toggle + limpar;
+        grade.innerHTML = '<div class="estado"><span class="emoji">&#128269;</span>Nenhum concurso encontrado.<br>Tente outra busca ou inclua os encerrados.</div>';
+      } else {
+        const txt = total + " concurso" + (total > 1 ? "s" : "") + " encontrado" + (total > 1 ? "s" : "");
+        $("resumo").innerHTML = `${txt} &middot; ${toggle}${limpar}`;
+        grade.innerHTML = "";
+        lista.forEach((c) => grade.appendChild(card(c)));
       }
-      $("resumo").textContent = total + " concurso" + (total > 1 ? "s" : "") + " encontrado" + (total > 1 ? "s" : "");
-      grade.innerHTML = "";
-      lista.forEach((c) => grade.appendChild(card(c)));
+      const tb = $("toggle-enc");
+      if (tb) tb.addEventListener("click", () => { filtros.encerrados = !filtros.encerrados; buscar(); });
+      const lb = $("limpar-tudo");
+      if (lb) lb.addEventListener("click", limparFiltros);
+    }
+
+    // Reseta todos os filtros e a busca para o estado inicial.
+    function limparFiltros() {
+      filtros.q = ""; filtros.area = ""; filtros.uf = ""; filtros.tipo = "";
+      filtros.encerrados = false;
+      $("q").value = "";
+      $("busca-wrap").classList.remove("tem-texto");
+      $("uf").value = "";
+      [...$("chips").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
+      [...$("seg-tipo").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
+      buscar();
     }
 
     // Calcula o status do prazo de inscricao a partir da data de encerramento.

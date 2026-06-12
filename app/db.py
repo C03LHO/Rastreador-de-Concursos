@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("DB_PATH", "concursos.db")
 
 # Marca do modelo de dados / fonte atual. Se mudar, os dados antigos (por
 # exemplo, os da API anterior, que nao tinham link) sao limpos no boot.
-VERSAO_FONTE = "concursosnobrasil-v3"
+VERSAO_FONTE = "concursosnobrasil-v4"
 
 
 def remover_acentos(texto):
@@ -30,13 +30,29 @@ def remover_acentos(texto):
 
 def conectar():
     # Abre uma conexao nova. row_factory deixa as linhas acessiveis por nome.
+    # busy_timeout (via timeout) faz a conexao esperar em vez de falhar quando
+    # outra esta escrevendo.
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def _aplicar_pragmas():
+    # WAL permite leituras simultaneas enquanto a coleta/enriquecimento escreve,
+    # evitando travas e lentidao quando o app serve requisicoes e grava ao mesmo
+    # tempo. So precisa ser definido uma vez (fica gravado no arquivo).
+    conn = conectar()
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def iniciar_banco():
     # Cria as tabelas caso ainda nao existam e aplica migracoes simples.
+    _aplicar_pragmas()
     conn = conectar()
     try:
         conn.execute(
@@ -100,6 +116,7 @@ def iniciar_banco():
         # Indices simples para acelerar os filtros mais comuns.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_concursos_uf ON concursos(uf)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_concursos_tipo ON concursos(tipo)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_concursos_chave ON concursos(chave)")
 
         # Troca de fonte: se o modelo mudou, limpa os concursos antigos para
         # nao misturar dados sem link com os novos.
@@ -176,7 +193,7 @@ def concursos_para_detalhar(limite):
     try:
         cur = conn.execute(
             """
-            SELECT hash, link, uf, tipo FROM concursos
+            SELECT hash, link, uf, tipo, orgao FROM concursos
             WHERE detalhe_em IS NULL OR detalhe_em = ''
             ORDER BY (uf = 'pa') DESC,
                      (tipo = 'aberto') DESC,
@@ -199,14 +216,15 @@ def atualizar_detalhe(hash_, dados):
             """
             UPDATE concursos
             SET data_inicio = ?, data_fim = ?, link_oficial = ?, pdf_url = ?,
-                resumo = ?, detalhes_json = ?, blob_detalhe = ?, detalhe_em = ?
+                resumo = ?, detalhes_json = ?, blob_detalhe = ?,
+                chave = COALESCE(?, chave), detalhe_em = ?
             WHERE hash = ?
             """,
             (
                 dados.get("data_inicio", ""), dados.get("data_fim", ""),
                 dados.get("link_oficial", ""), dados.get("pdf_url", ""),
                 dados.get("resumo", ""), dados.get("detalhes_json", ""),
-                dados.get("blob_detalhe", ""), agora, hash_,
+                dados.get("blob_detalhe", ""), dados.get("chave"), agora, hash_,
             ),
         )
         conn.commit()
@@ -228,10 +246,16 @@ def contar_detalhados():
 
 
 def buscar_concursos(uf=None, area_palavras=None, cidade=None, cargo=None,
-                     tipo=None, q=None, limite=100):
+                     tipo=None, q=None, limite=100, incluir_encerrados=False):
     # Monta a consulta dinamicamente. Todos os filtros sao combinados em E.
     clausulas = []
     params = []
+
+    # Por padrao esconde os concursos com inscricoes ja encerradas (data_fim no
+    # passado). Itens sem data de encerramento conhecida sao mantidos.
+    if not incluir_encerrados:
+        clausulas.append("(data_fim IS NULL OR data_fim = '' OR data_fim >= ?)")
+        params.append(datetime.now().date().isoformat())
 
     if uf:
         clausulas.append("uf = ?")
@@ -269,25 +293,30 @@ def buscar_concursos(uf=None, area_palavras=None, cidade=None, cargo=None,
         for palavra in area_palavras:
             params.append(f"% {remover_acentos(palavra.lower().strip())} %")
 
-    base = "SELECT * FROM concursos"
-    if clausulas:
-        base += " WHERE " + " AND ".join(clausulas)
+    # Deduplica entre fontes: esconde o concurso de outra fonte quando o
+    # Concursos no Brasil (fonte preferida, com enriquecimento) ja tem o mesmo
+    # (mesma chave = orgao + uf + data de encerramento). Nunca esconde itens da
+    # mesma fonte nem os sem chave, para nao sumir com concursos distintos do
+    # mesmo orgao que por acaso tenham o mesmo prazo.
+    clausulas.append(
+        """NOT EXISTS (
+            SELECT 1 FROM concursos p
+            WHERE p.chave = concursos.chave AND concursos.chave <> ''
+              AND p.fonte = 'Concursos no Brasil'
+              AND concursos.fonte <> 'Concursos no Brasil'
+        )"""
+    )
 
-    # Deduplica entre fontes pela "chave" (orgao normalizado + uf). Quando o
-    # mesmo concurso aparece em mais de uma fonte, mantemos um so, preferindo o
-    # Concursos no Brasil (que tem enriquecimento), depois os abertos e os ja
-    # enriquecidos. Linhas sem chave nao se agrupam (usam o proprio hash).
-    sql = f"""
-        SELECT * FROM (
-            SELECT *, ROW_NUMBER() OVER (
-                PARTITION BY COALESCE(NULLIF(chave, ''), hash)
-                ORDER BY (data_fim IS NOT NULL AND data_fim <> '') DESC,
-                         (fonte = 'Concursos no Brasil') DESC,
-                         (tipo = 'aberto') DESC
-            ) AS _rn FROM ({base})
-        )
-        WHERE _rn = 1
-        ORDER BY data DESC, atualizado_em DESC LIMIT ?
+    sql = "SELECT * FROM concursos"
+    if clausulas:
+        sql += " WHERE " + " AND ".join(clausulas)
+    sql += """
+        ORDER BY (tipo = 'aberto') DESC,
+                 (data_fim IS NOT NULL AND data_fim <> '') DESC,
+                 data_fim ASC,
+                 data DESC,
+                 atualizado_em DESC
+        LIMIT ?
     """
     params.append(int(limite))
 

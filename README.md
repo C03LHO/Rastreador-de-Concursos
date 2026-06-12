@@ -46,6 +46,7 @@ Procurar concurso é chato: a informação fica espalhada, alguns sites caem e n
 - 🧠 **Informação rica por concurso**: banca, escolaridade, salário, taxa de inscrição e data da prova, extraídos automaticamente.
 - 📄 **Leitura automática do edital em PDF** (quando encontrado) e botão para baixar.
 - 🎓 **Treinar com provas anteriores**: busca provas e gabaritos no PCI Concursos por cargo, com link para baixar. Cada concurso também tem um atalho de provas anteriores.
+- ⏳ **Prazo em primeiro lugar**: esconde inscrições já encerradas (com um toque para incluir) e mostra primeiro os concursos que encerram mais cedo, para você não perder nada.
 - ⭐ **Favoritar e acompanhar prazos**: salve concursos e veja-os ordenados pelo prazo de inscrição, com lembrete por push quando o prazo se aproxima.
 - 🗂️ **Mais de uma fonte**: agrega o **Concursos no Brasil** e o **PCI Concursos**, deduplicando automaticamente o mesmo concurso entre as fontes.
 - 🔔 **Perfil e notificações**: você escolhe estados, órgãos/cidades e áreas de interesse, e recebe um push no celular (via **ntfy**) quando surge um concurso novo do seu perfil.
@@ -219,8 +220,13 @@ Os dados vêm do site gratuito **Concursos no Brasil** (`https://concursosnobras
 
 Uma **segunda fonte de listagem**, o **PCI Concursos**
 (`https://www.pciconcursos.com.br/concursos/`), amplia a cobertura. O mesmo concurso
-que aparece nas duas fontes é deduplicado por uma chave normalizada (órgão + UF, com
-"Pref." expandido para "Prefeitura" etc.), mantendo a versão mais completa.
+que aparece nas duas fontes é deduplicado por uma chave (órgão + UF + data de
+encerramento), que inclui o prazo de propósito: assim concursos distintos de um mesmo
+órgão (cargos/editais diferentes) nunca são fundidos por engano, e o item do Concursos
+no Brasil (mais completo) é o que fica.
+
+O banco usa **WAL** no SQLite, então o app continua respondendo rápido mesmo enquanto
+a coleta e a leitura dos editais gravam em segundo plano.
 
 As **provas anteriores** (aba Treinar) também vêm do PCI
 (`https://www.pciconcursos.com.br/provas/`), apenas listando e linkando (sem baixar

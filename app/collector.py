@@ -148,19 +148,31 @@ def parse_linha(row, uf_padrao, tipo):
     }
 
 
-def _chave(orgao, uf):
-    # Chave normalizada (orgao + uf) para deduplicar entre fontes diferentes.
-    # Expande abreviacoes comuns (Pref. -> prefeitura) e tira o "/UF" do nome,
-    # para que "Pref. Maravilha/SC" e "Prefeitura de Maravilha" virem a mesma.
-    s = db.remover_acentos((orgao or "").lower())
+def _chave(orgao, uf, data_fim=""):
+    # Chave para deduplicar o MESMO concurso entre fontes diferentes.
+    #
+    # Inclui a data de encerramento porque um mesmo orgao costuma ter varios
+    # concursos distintos ao mesmo tempo (cargos/editais diferentes). Sem a data,
+    # esses concursos distintos seriam fundidos por engano. Sem data_fim a chave
+    # fica vazia, e o item nao se funde com ninguem (melhor mostrar do que
+    # esconder um concurso real).
+    if not data_fim:
+        return ""
+    # As fontes nomeiam o orgao de formas diferentes. O PCI costuma usar
+    # "SIGLA - Nome por extenso" ou "Cidade/UF"; o Concursos no Brasil usa so a
+    # sigla ou o nome curto. Pegamos a parte ANTES do " - " ou "/", que e o
+    # identificador comum (sigla ou cidade), e normalizamos.
+    nome = re.split(r"\s[-–]\s|/", orgao or "", maxsplit=1)[0]
+    s = db.remover_acentos(nome.lower())
     s = re.sub(r"\bpref\.?\b", "prefeitura", s)
     s = re.sub(r"\bcam\.?\b", "camara", s)
     s = re.sub(r"\bgov\.?\b", "governo", s)
-    s = re.sub(r"/[a-z]{2}\b", " ", s)
     s = re.sub(r"\b(de|da|do|das|dos|e)\b", " ", s)
     s = re.sub(r"[^a-z0-9 ]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
-    return f"{s}|{(uf or '').lower()}"
+    # Tira um token de UF que tenha sobrado no fim do nome.
+    s = re.sub(r"\s+" + re.escape((uf or "").lower()) + r"$", "", s)
+    return f"{s}|{(uf or '').lower()}|{data_fim}"
 
 
 def _para_linha_db(item, fonte="Concursos no Brasil"):
@@ -190,7 +202,7 @@ def _para_linha_db(item, fonte="Concursos no Brasil"):
         "tipo": item["tipo"],
         "data": item["data"],
         "fonte": fonte,
-        "chave": _chave(item["orgao"], uf),
+        "chave": _chave(item["orgao"], uf, item.get("data_fim", "")),
         "blob": blob,
         "raw_json": json.dumps(item, ensure_ascii=False),
     }
@@ -579,6 +591,11 @@ def enriquecer_um(client, concurso):
     if detalhes:
         dados["detalhes_json"] = json.dumps(detalhes, ensure_ascii=False)
     dados["blob_detalhe"] = " ".join(p for p in partes_blob if p)[:7000]
+    # Agora que sabemos a data de encerramento, recalculamos a chave de dedupe
+    # (orgao + uf + data_fim) para casar com a mesma vaga vinda de outra fonte.
+    if dados["data_fim"]:
+        dados["chave"] = _chave(concurso.get("orgao", ""), concurso.get("uf", ""),
+                                dados["data_fim"])
 
     db.atualizar_detalhe(concurso["hash"], dados)
     return True

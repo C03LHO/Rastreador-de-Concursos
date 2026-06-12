@@ -125,6 +125,7 @@ def api_concursos(
     tipo: str = Query(default=None, description="aberto ou previsto"),
     q: str = Query(default=None, description="Busca livre no blob"),
     limite: int = Query(default=100, description="Quantidade maxima de itens"),
+    encerrados: bool = Query(default=False, description="Incluir inscricoes encerradas"),
 ):
     # Traduz a area para a lista de palavras-chave, se a area existir.
     area_palavras = AREAS.get(area.lower()) if area else None
@@ -137,6 +138,7 @@ def api_concursos(
         tipo=tipo,
         q=q,
         limite=limite,
+        incluir_encerrados=encerrados,
     )
     return {"total": len(concursos), "concursos": concursos}
 
