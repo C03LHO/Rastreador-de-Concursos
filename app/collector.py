@@ -456,38 +456,101 @@ _REDES = (
     "instagram", "linkedin", "youtube", "/share", "pinterest",
 )
 
+# Dominios do setor publico: tendem a ser o site OFICIAL do orgao do concurso.
+_DOM_PUBLICO = (".gov.br", ".jus.br", ".leg.br", ".mp.br", ".def.br", ".edu.br")
 
-def _achar_link_oficial(html):
-    # Pega o link externo mais provavel de ser o oficial (portal/edital).
-    # A secao "Leia tambem" so tem links internos do proprio site, entao
-    # procurar links EXTERNOS na pagina toda e seguro e mais abrangente.
-    candidatos = []
-    for m in re.finditer(r'<a\s+[^>]*href="(https?://[^"]+)"[^>]*>(.*?)</a>', html, re.S):
+# Links de legislacao / imprensa oficial / ruido que NAO sao o site do concurso
+# (apareciam no corpo e eram confundidos com o "site oficial").
+_EXCLUIR_OFICIAL = (
+    "planalto.gov.br", "ccivil_03", "/emenda", "/lei", "in.gov.br",
+    "imprensanacional", "wikipedia", "diariooficial", "sei.",
+)
+
+# Pistas de que um dominio e de banca organizadora (onde se faz a inscricao).
+_HINT_BANCA = (
+    "concurso", "selecao", "seletivo", "cebraspe", "cespe", "fgv", "fcc",
+    "vunesp", "quadrix", "aocp", "idecan", "consulplan", "fundatec", "objetiva",
+    "fadesp", "cetap", "cesgranrio", "avalia", "ibfc", "instituto",
+)
+
+# Textos de chamada que costumam linkar a pagina de inscricao.
+_TEXTO_CTA = (
+    "clicando aqui", "clique aqui", "acesse aqui", "acesse o site", "aqui",
+    "endereco", "site", "site oficial", "neste link", "link", "portal",
+)
+
+
+def _regiao_artigo(html):
+    # Isola o corpo do artigo (<article> ou <main>), descartando menu, barra
+    # lateral, rodape e blocos de "noticias relacionadas". E o que evita pegar
+    # um link errado como se fosse o site oficial.
+    for tag in ("article", "main"):
+        m = re.search(r"<" + tag + r"[^>]*>(.*?)</" + tag + r">", html, re.S | re.I)
+        if m:
+            return m.group(1)
+    return html
+
+
+def _eh_pdf(href):
+    return href.lower().split("?")[0].endswith(".pdf")
+
+
+def _links_artigo(html, fonte_dom):
+    # Links externos DENTRO do corpo do artigo (sem o proprio site, redes
+    # sociais e legislacao). Retorna pares (href, texto).
+    saida = []
+    for m in re.finditer(r'<a\s+[^>]*href="(https?://[^"]+)"[^>]*>(.*?)</a>',
+                         _regiao_artigo(html), re.S):
         href = m.group(1)
-        if "concursosnobrasil" in href:
+        low = href.lower()
+        if fonte_dom in low:
             continue
-        if any(s in href.lower() for s in _REDES):
+        if any(s in low for s in _REDES) or any(s in low for s in _EXCLUIR_OFICIAL):
             continue
-        texto = re.sub(r"<[^>]+>", " ", m.group(2)).strip().lower()
-        candidatos.append((href, texto))
+        texto = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(2))).strip()
+        saida.append((href, texto))
+    return saida
 
-    def pontos(item):
-        href, texto = item
-        s = 0
-        if href.lower().split("?")[0].endswith(".pdf"):
-            s += 4
-        if ".gov.br" in href:
-            s += 3
-        if any(k in (texto + " " + href).lower()
-               for k in ("edital", "inscri", "portal", "concurso", "selet")):
-            s += 2
-        return s
 
-    # So aceita links que pareçam de fato oficiais (pontuacao > 0), para nao
-    # pegar um link qualquer de rodape.
-    candidatos = [c for c in candidatos if pontos(c) > 0]
-    candidatos.sort(key=pontos, reverse=True)
-    return candidatos[0][0] if candidatos else ""
+def _pontuar_oficial(href, texto):
+    # Pontua o quao provavel e que um link seja o site oficial / de inscricao.
+    low = (href + " " + texto).lower()
+    pts = 0
+    if any(d in href.lower() for d in _DOM_PUBLICO):
+        pts += 4
+    if any(h in href.lower() for h in _HINT_BANCA):
+        pts += 3
+    if "inscri" in low:
+        pts += 3
+    if "/concurso" in href.lower() or "edital" in low:
+        pts += 2
+    if texto.strip().lower() in _TEXTO_CTA:
+        pts += 2
+    return pts
+
+
+def _achar_oficial_e_edital(html, fonte_dom):
+    # Decide, olhando so o corpo do artigo: (link_oficial, link_do_edital).
+    # link_oficial so e retornado com confianca minima (evita link aleatorio).
+    links = _links_artigo(html, fonte_dom)
+
+    oficial, melhor = "", 0
+    for href, texto in links:
+        if _eh_pdf(href):  # um PDF e o edital, nao o "site oficial"
+            continue
+        p = _pontuar_oficial(href, texto)
+        if p > melhor:
+            melhor, oficial = p, href
+    if melhor < 3:
+        oficial = ""
+
+    edital = ""
+    for href, texto in links:
+        if _eh_pdf(href) or "edital" in texto.lower():
+            edital = href
+            break
+
+    return oficial, edital
 
 
 def _achar_pdf(client, link_oficial):
@@ -498,7 +561,8 @@ def _achar_pdf(client, link_oficial):
     if link_oficial.lower().split("?")[0].endswith(".pdf"):
         return link_oficial
     try:
-        r = client.get(link_oficial, timeout=20, follow_redirects=True)
+        r = client.get(link_oficial, timeout=20, follow_redirects=True,
+                        headers={"User-Agent": PCI_UA})
         if "pdf" in r.headers.get("content-type", "").lower():
             return str(r.url)
         html = r.content.decode("utf-8", "replace")
@@ -518,7 +582,8 @@ def _achar_pdf(client, link_oficial):
 def _ler_pdf(client, pdf_url):
     # Baixa e extrai o texto do PDF (com limites de tamanho e de paginas).
     try:
-        r = client.get(pdf_url, timeout=30, follow_redirects=True)
+        r = client.get(pdf_url, timeout=30, follow_redirects=True,
+                        headers={"User-Agent": PCI_UA})
         conteudo = r.content
         if not conteudo[:5] == b"%PDF-" and "pdf" not in r.headers.get("content-type", "").lower():
             return ""
@@ -723,7 +788,8 @@ def enriquecer_um(client, concurso):
         "pdf_url": "", "resumo": "", "detalhes_json": "", "blob_detalhe": "",
     }
     try:
-        r = client.get(concurso["link"], timeout=25, follow_redirects=True)
+        r = client.get(concurso["link"], timeout=25, follow_redirects=True,
+                        headers={"User-Agent": PCI_UA})
         html = r.content.decode("utf-8", "replace")
     except Exception as erro:
         # Marca como tentado para nao ficar repetindo uma pagina problematica.
@@ -734,6 +800,7 @@ def enriquecer_um(client, concurso):
     texto = _texto_visivel(html)
     paragrafos = _paragrafos(html)
     corpo = " ".join(paragrafos).strip()
+    fonte_dom = "pciconcursos" if "pciconcursos" in concurso["link"] else "concursosnobrasil"
     # Descricao curta do concurso (abertura da materia).
     dados["resumo"] = _extrair_resumo(paragrafos)
     # Prefere as datas do corpo da materia; se nao achar, tenta no texto todo.
@@ -741,7 +808,16 @@ def enriquecer_um(client, concurso):
     if not dfim:
         di, dfim = _extrair_periodo(texto)
     dados["data_inicio"], dados["data_fim"] = di, dfim
-    dados["link_oficial"] = _achar_link_oficial(html)
+    # Site oficial / inscricao e link do edital, achados so no corpo do artigo.
+    dados["link_oficial"], edital = _achar_oficial_e_edital(html, fonte_dom)
+
+    # Parte dos detalhes que ja vieram da listagem (PCI). Servem de base e nao
+    # se perdem se a leitura da pagina nao reencontrar um campo.
+    base_det = {}
+    try:
+        base_det = json.loads(concurso.get("detalhes_json") or "{}") or {}
+    except Exception:
+        base_det = {}
 
     # Informacoes extras (banca, escolaridade, salario, taxa, vagas, cargos...).
     detalhes = _extrair_detalhes(corpo)
@@ -749,11 +825,12 @@ def enriquecer_um(client, concurso):
     partes_blob = []
     if dados["resumo"]:
         partes_blob.append(_folder_blob(dados["resumo"]))
-    if detalhes:
-        partes_blob.append(_folder_blob(" ".join(detalhes.values())))
 
-    if LER_PDF and dados["link_oficial"]:
-        pdf = _achar_pdf(client, dados["link_oficial"])
+    # Le o edital automaticamente: tenta o link do edital e, se nao houver, a
+    # pagina oficial. Le o PDF e usa o texto para completar datas e detalhes.
+    if LER_PDF:
+        alvo = edital or dados["link_oficial"]
+        pdf = _achar_pdf(client, alvo) if alvo else ""
         if pdf:
             dados["pdf_url"] = pdf
             texto_pdf = _ler_pdf(client, pdf)
@@ -770,8 +847,12 @@ def enriquecer_um(client, concurso):
                 for chave, valor in _extrair_detalhes(texto_pdf).items():
                     detalhes.setdefault(chave, valor)
 
-    if detalhes:
-        dados["detalhes_json"] = json.dumps(detalhes, ensure_ascii=False)
+    # Mescla: parte da base (listagem) e os novos detalhes prevalecem.
+    final = dict(base_det)
+    final.update(detalhes)
+    if final:
+        dados["detalhes_json"] = json.dumps(final, ensure_ascii=False)
+        partes_blob.append(_folder_blob(" ".join(str(v) for v in final.values())))
     dados["blob_detalhe"] = " ".join(p for p in partes_blob if p)[:7000]
     # Agora que sabemos a data de encerramento, recalculamos a chave de dedupe
     # (orgao + uf + data_fim) para casar com a mesma vaga vinda de outra fonte.
@@ -1081,12 +1162,14 @@ def coletar_pci(client, novos_out=None):
         total += 1
         norm = _para_linha_db(item, fonte="PCI Concursos")
         novo = db.upsert_concurso(norm)
+        # Grava o que ja sabemos da listagem (prazo, escolaridade, salario), mas
+        # com marcar_lido=False: o item continua na fila para o enriquecimento
+        # ler a noticia/edital depois e completar tudo (link oficial, PDF...).
         db.atualizar_detalhe(norm["hash"], {
             "data_inicio": "", "data_fim": item["data_fim"],
-            "link_oficial": "", "pdf_url": "", "resumo": "",
             "detalhes_json": json.dumps(item.get("detalhes", {}), ensure_ascii=False),
             "blob_detalhe": _folder_blob(" ".join(str(v) for v in item.get("detalhes", {}).values())),
-        })
+        }, marcar_lido=False)
         if novo:
             novos += 1
             if novos_out is not None:

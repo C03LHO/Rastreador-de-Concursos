@@ -199,7 +199,7 @@ def concursos_para_detalhar(limite):
     try:
         cur = conn.execute(
             """
-            SELECT hash, link, uf, tipo, orgao FROM concursos
+            SELECT hash, link, uf, tipo, orgao, detalhes_json FROM concursos
             WHERE detalhe_em IS NULL OR detalhe_em = ''
             ORDER BY (uf = 'pa') DESC,
                      (tipo = 'aberto') DESC,
@@ -213,24 +213,37 @@ def concursos_para_detalhar(limite):
         conn.close()
 
 
-def atualizar_detalhe(hash_, dados):
+def atualizar_detalhe(hash_, dados, marcar_lido=True):
     # Grava os campos extraidos da pagina de detalhe e do PDF do edital.
+    #
+    # COALESCE(NULLIF(?, '')) preserva o valor que ja existe quando o novo vem
+    # vazio: assim uma leitura que nao reencontrou um campo (ex: a data) nao
+    # apaga o que ja sabiamos. marcar_lido=False grava dados iniciais (ex: da
+    # listagem do PCI) SEM tirar o item da fila de enriquecimento.
     conn = conectar()
     try:
         agora = datetime.now().isoformat(timespec="seconds")
+        # detalhe_em: marca a hora (lido) ou mantem o valor atual (NULL = a ler).
+        detalhe_sql = "?" if marcar_lido else "detalhe_em"
         conn.execute(
-            """
+            f"""
             UPDATE concursos
-            SET data_inicio = ?, data_fim = ?, link_oficial = ?, pdf_url = ?,
-                resumo = ?, detalhes_json = ?, blob_detalhe = ?,
-                chave = COALESCE(?, chave), detalhe_em = ?
+            SET data_inicio = COALESCE(NULLIF(?, ''), data_inicio),
+                data_fim = COALESCE(NULLIF(?, ''), data_fim),
+                link_oficial = COALESCE(NULLIF(?, ''), link_oficial),
+                pdf_url = COALESCE(NULLIF(?, ''), pdf_url),
+                resumo = COALESCE(NULLIF(?, ''), resumo),
+                detalhes_json = COALESCE(NULLIF(?, ''), detalhes_json),
+                blob_detalhe = COALESCE(NULLIF(?, ''), blob_detalhe),
+                chave = COALESCE(?, chave), detalhe_em = {detalhe_sql}
             WHERE hash = ?
             """,
             (
                 dados.get("data_inicio", ""), dados.get("data_fim", ""),
                 dados.get("link_oficial", ""), dados.get("pdf_url", ""),
                 dados.get("resumo", ""), dados.get("detalhes_json", ""),
-                dados.get("blob_detalhe", ""), dados.get("chave"), agora, hash_,
+                dados.get("blob_detalhe", ""), dados.get("chave"),
+                *([agora] if marcar_lido else []), hash_,
             ),
         )
         conn.commit()

@@ -135,6 +135,50 @@ def test_cargos_ti_vazio_quando_nao_ha():
     assert "cargos_ti" not in d
 
 
+def test_regiao_artigo_isola_o_corpo():
+    html = ("<header><a href='http://x'>menu</a></header>"
+            "<article><p>conteudo da materia</p></article>"
+            "<footer>rodape</footer>")
+    reg = collector._regiao_artigo(html)
+    assert "conteudo da materia" in reg
+    assert "menu" not in reg and "rodape" not in reg
+
+
+def test_oficial_ignora_legislacao_e_pega_gov():
+    html = (
+        '<article><p>Veja a '
+        '<a href="https://www.planalto.gov.br/ccivil_03/lei/L8112.htm">Lei 8.112</a>. '
+        'As inscricoes pelo '
+        '<a href="https://sead.ma.gov.br/concursos">site oficial</a>.</p></article>'
+    )
+    oficial, edital = collector._achar_oficial_e_edital(html, "concursosnobrasil")
+    assert oficial == "https://sead.ma.gov.br/concursos"
+    assert edital == ""
+
+
+def test_edital_pdf_detectado_no_artigo():
+    html = ('<article><p>Confira o '
+            '<a href="https://orgao.gov.br/edital-001-2026.pdf">Edital 001/2026</a>.'
+            '</p></article>')
+    _oficial, edital = collector._achar_oficial_e_edital(html, "concursosnobrasil")
+    assert edital.endswith("edital-001-2026.pdf")
+
+
+def test_links_fora_do_artigo_sao_ignorados():
+    html = ('<nav><a href="https://banca.gov.br/concursos">nav</a></nav>'
+            '<article><p>Sem links externos aqui.</p></article>')
+    oficial, edital = collector._achar_oficial_e_edital(html, "concursosnobrasil")
+    assert oficial == "" and edital == ""
+
+
+def test_link_da_propria_fonte_nao_e_oficial():
+    html = ('<article><p>'
+            '<a href="https://concursosnobrasil.com/concursos/pa/">veja</a>'
+            '</p></article>')
+    oficial, _edital = collector._achar_oficial_e_edital(html, "concursosnobrasil")
+    assert oficial == ""
+
+
 def test_extrair_resumo_ignora_menu_do_site():
     # O menu/rodape do site ("Buscar no site... concursos abertos...") nao pode
     # virar resumo; deve ser pulado e o paragrafo real escolhido.

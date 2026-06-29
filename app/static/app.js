@@ -320,6 +320,16 @@ function abrirDetalhe(c) {
   const linkReal = c.link && c.link.startsWith("http") ? c.link : "";
   const prazo = prazoInfo(c.data_fim);
   const periodo = montarPeriodo(c);
+  const fonte = c.fonte || "Concursos no Brasil";
+  // Icones reutilizados nas acoes.
+  const icoLink = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`;
+  const icoPdf = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>`;
+  // Acao "materia" (a fonte da noticia). Acao "Google" quando nao ha link.
+  const acaoMateria = linkReal
+    ? `<a class="acao __CLS__" href="${esc(linkReal)}" target="_blank" rel="noopener">${icoLink} Ver materia (${esc(fonte)})</a>`
+    : `<a class="acao __CLS__" href="${linkBusca(c)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg> Buscar no Google</a>`;
+  // Hierarquia: site oficial > edital (PDF) > materia/Google.
+  const temPrincipal = !!(c.link_oficial || c.pdf_url);
 
   $("sheet-conteudo").innerHTML = `
     <h2>${esc(c.orgao || "Orgao nao informado")}</h2>
@@ -339,23 +349,9 @@ function abrirDetalhe(c) {
     <div class="info"><span class="rotulo">Fonte</span><span class="valor">${esc(c.fonte || "Concursos no Brasil")}</span></div>
 
     <div class="acoes-sheet">
-      ${linkReal
-        ? `<a class="acao acao-primaria" href="${esc(linkReal)}" target="_blank" rel="noopener">
-             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-             Abrir pagina do concurso
-           </a>`
-        : `<a class="acao acao-primaria" href="${linkBusca(c)}" target="_blank" rel="noopener">
-             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-             Buscar no Google
-           </a>`}
-      ${c.pdf_url ? `<a class="acao acao-secundaria" href="${esc(c.pdf_url)}" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
-        Baixar edital (PDF)
-      </a>` : ""}
-      ${c.link_oficial ? `<a class="acao acao-secundaria" href="${esc(c.link_oficial)}" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-        Site oficial / inscricao
-      </a>` : ""}
+      ${c.link_oficial ? `<a class="acao acao-primaria" href="${esc(c.link_oficial)}" target="_blank" rel="noopener">${icoLink} Site oficial / inscricao</a>` : ""}
+      ${c.pdf_url ? `<a class="acao ${c.link_oficial ? "acao-secundaria" : "acao-primaria"}" href="${esc(c.pdf_url)}" target="_blank" rel="noopener">${icoPdf} Baixar edital (PDF)</a>` : ""}
+      ${acaoMateria.replace("__CLS__", temPrincipal ? "acao-secundaria" : "acao-primaria")}
       <button class="acao acao-secundaria" id="btn-provas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         Provas anteriores
@@ -366,8 +362,8 @@ function abrirDetalhe(c) {
       </button>
     </div>
     <p class="nota-link">${c.detalhe_em
-      ? "Datas e edital lidos automaticamente da pagina e do PDF, quando disponivel."
-      : "Detalhes (datas e edital) sao carregados em segundo plano e aparecem em instantes."}</p>
+      ? "Datas, edital e informacoes lidos automaticamente da materia e do PDF. O 'site oficial' e o melhor link encontrado &mdash; confirme sempre na pagina do orgao/banca."
+      : "Lendo a materia e o edital em segundo plano. As informacoes aparecem em instantes."}</p>
   `;
 
   $("btn-compartilhar").addEventListener("click", () => compartilhar(c));
