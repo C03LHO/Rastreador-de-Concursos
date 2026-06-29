@@ -130,6 +130,8 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `HORA_AVISO_PRAZO` | `8` | Hora do lembrete diário de prazo dos favoritos. |
 | `PRAZO_AVISO_DIAS` | `3` | Avisar quando um favorito encerrar em até N dias. |
 | `HORA_DIGEST` | `7` | Hora do resumo diário (digest) dos novos concursos de TI. |
+| `IA_MODELO` | `llama-3.1-8b-instant` | Modelo usado no resumo por IA (opcional; configure a chave no app). |
+| `IA_MAX_POR_RODADA` | `60` | Quantos concursos de TI resumir por rodada de IA (respeita o limite grátis). |
 
 ## 🔌 API REST
 
@@ -146,6 +148,8 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `GET` | `/api/perfil` | Lê o perfil de interesse salvo. |
 | `POST` | `/api/perfil` | Salva o perfil (estados, termos, áreas e ntfy). |
 | `POST` | `/api/notificar-teste` | Dispara uma notificação de teste no ntfy. |
+| `POST` | `/api/ia-teste` | Valida a chave/modelo de IA (Groq). |
+| `POST` | `/api/ia-gerar` | Gera os resumos de IA dos concursos de TI pendentes. |
 | `GET` | `/api/favoritos` | Lista os concursos favoritados (ordenados por prazo). |
 | `POST` | `/api/favoritos/{hash}` | Favorita ou desfavorita um concurso. |
 | `POST` | `/api/coletar` | Força uma coleta imediata (em segundo plano). |
@@ -198,6 +202,17 @@ Na tela **Treinar** (ícone de livro no topo), busque por um cargo (ex: `profess
 para baixar lá. Cada concurso também tem um botão **Provas anteriores** que já abre
 a busca pelo cargo. Respeitamos o `robots.txt` do PCI: o app apenas lista e linka,
 sem baixar os PDFs no servidor.
+
+## 🤖 Resumo por IA (opcional e gratuito)
+
+Por padrão o app extrai as informações por heurística (leve, roda em qualquer
+lugar). Se quiser um **resumo em linguagem natural** e um **plano de estudo de
+TI** por concurso, cole uma chave **gratuita** da [Groq](https://console.groq.com/keys)
+em **Perfil → Inteligência (IA)** e toque em **Testar IA**. A partir daí, a
+leitura diária gera o resumo dos concursos de TI (usando o texto do edital já
+lido, sem custo de processamento no servidor). **Sem chave, nada muda.** É
+compatível com qualquer endpoint no formato OpenAI (Groq, etc.), configurável
+por `IA_MODELO`/`IA_KEY`.
 
 ## 🗂️ Estrutura do projeto
 

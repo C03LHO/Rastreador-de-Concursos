@@ -366,7 +366,21 @@ function abrirDetalhe(c) {
     </div>
 
     ${c.titulo ? `<p class="titulo-det">${esc(c.titulo)}</p>` : ""}
-    ${c.resumo ? `<p class="resumo-det">${esc(c.resumo)}</p>` : ""}
+    ${(() => {
+      const det = detalhesDe(c);
+      if (!det.ia_resumo && !det.ia_estudo) {
+        return c.resumo ? `<p class="resumo-det">${esc(c.resumo)}</p>` : "";
+      }
+      const estudo = det.ia_estudo
+        ? det.ia_estudo.split("•").map((t) => t.trim()).filter(Boolean)
+        : [];
+      return `<div class="ia-box">
+        <div class="ia-tag">🤖 Resumo por IA</div>
+        ${det.ia_resumo ? `<p class="ia-resumo">${esc(det.ia_resumo)}</p>` : ""}
+        ${estudo.length ? `<div class="ia-estudo-rotulo">📚 O que estudar (TI)</div>
+          <ul class="ia-estudo">${estudo.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+      </div>`;
+    })()}
 
     ${periodo ? `<div class="info"><span class="rotulo">Periodo de inscricao</span><span class="valor">${periodo}</span></div>` : ""}
     <div class="info"><span class="rotulo">Vagas / Cargo</span><span class="valor">${esc(detalhesDe(c).vagas || c.vagas || "nao informado")}</span></div>
@@ -656,6 +670,8 @@ async function montarPerfil() {
     $("perfil-notificar").checked = !!p.notificar;
     $("perfil-ntfy-server").value = p.ntfy_server || "https://ntfy.sh";
     $("perfil-ntfy-topico").value = p.ntfy_topico || "";
+    $("perfil-ia-key").value = p.ia_key || "";
+    $("perfil-ia-model").value = p.ia_model || "";
   } catch (e) {}
 }
 function lerPerfilDaTela() {
@@ -667,6 +683,8 @@ function lerPerfilDaTela() {
     notificar: $("perfil-notificar").checked,
     ntfy_server: $("perfil-ntfy-server").value.trim() || "https://ntfy.sh",
     ntfy_topico: $("perfil-ntfy-topico").value.trim(),
+    ia_key: $("perfil-ia-key").value.trim(),
+    ia_model: $("perfil-ia-model").value.trim(),
     app_url: location.origin,
   };
 }
@@ -704,6 +722,30 @@ async function salvarPerfilSilencioso() {
 $("btn-perfil").addEventListener("click", () => abrirView("view-perfil"));
 $("perfil-salvar").addEventListener("click", salvarPerfil);
 $("perfil-testar").addEventListener("click", testarNotificacao);
+
+// IA: salva o perfil e valida a chave; e dispara a geracao sob demanda.
+async function testarIA() {
+  const msg = $("perfil-ia-msg");
+  msg.textContent = "Salvando e testando a IA...";
+  await salvarPerfilSilencioso();
+  try {
+    const r = await (await fetch("/api/ia-teste", { method: "POST" })).json();
+    msg.textContent = r.ok ? `IA funcionando (modelo ${r.modelo}).` : (r.erro || "Falhou.");
+  } catch (e) { msg.textContent = "Erro ao testar a IA."; }
+  setTimeout(() => (msg.textContent = ""), 6000);
+}
+async function gerarIA() {
+  const msg = $("perfil-ia-msg");
+  msg.textContent = "Salvando e gerando resumos em segundo plano...";
+  await salvarPerfilSilencioso();
+  try {
+    await fetch("/api/ia-gerar", { method: "POST" });
+    msg.textContent = "Gerando! Os resumos vao aparecer nos concursos de TI em instantes.";
+  } catch (e) { msg.textContent = "Erro ao iniciar a geracao."; }
+  setTimeout(() => (msg.textContent = ""), 6000);
+}
+$("perfil-ia-testar").addEventListener("click", testarIA);
+$("perfil-ia-gerar").addEventListener("click", gerarIA);
 
 // Botao voltar do celular fecha as telas abertas.
 window.addEventListener("popstate", () => {

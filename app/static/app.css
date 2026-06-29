@@ -274,6 +274,17 @@ body {
   background: var(--card); border: 1px solid var(--borda);
   border-radius: 12px; padding: 12px 14px;
 }
+/* Bloco do resumo/plano de estudo gerado por IA. */
+.ia-box {
+  margin: 0 0 16px; padding: 13px 15px; border-radius: 13px;
+  background: linear-gradient(180deg, rgba(45,212,191,0.10), rgba(45,212,191,0.03));
+  border: 1px solid rgba(45,212,191,0.35);
+}
+.ia-tag { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px; color: var(--acento); text-transform: uppercase; margin-bottom: 6px; }
+.ia-resumo { margin: 0 0 10px; font-size: 0.95rem; line-height: 1.55; color: var(--texto); }
+.ia-estudo-rotulo { font-size: 0.78rem; font-weight: 700; color: var(--texto); margin-bottom: 4px; }
+.ia-estudo { margin: 0; padding-left: 18px; }
+.ia-estudo li { font-size: 0.88rem; color: var(--suave); line-height: 1.5; }
 
 .estado {
   text-align: center; color: var(--suave);

@@ -251,6 +251,52 @@ def atualizar_detalhe(hash_, dados, marcar_lido=True):
         conn.close()
 
 
+def concursos_para_ia(limite):
+    # Concursos de TI (tem "cargos_ti") ja enriquecidos, mas ainda sem o resumo
+    # de IA ("ia_resumo"). Usa o texto ja salvo; nao precisa baixar nada.
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """
+            SELECT hash, orgao, resumo, blob_detalhe, detalhes_json
+            FROM concursos
+            WHERE detalhe_em IS NOT NULL AND detalhe_em <> ''
+              AND detalhes_json LIKE '%"cargos_ti"%'
+              AND detalhes_json NOT LIKE '%"ia_resumo"%'
+            ORDER BY (uf = 'pa') DESC, (tipo = 'aberto') DESC, data DESC
+            LIMIT ?
+            """,
+            (int(limite),),
+        )
+        return [dict(linha) for linha in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def adicionar_detalhes_ia(hash_, ia):
+    # Funde o resumo/plano de estudo de IA no detalhes_json existente.
+    import json as _json
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            "SELECT detalhes_json FROM concursos WHERE hash = ?", (hash_,))
+        row = cur.fetchone()
+        if not row:
+            return
+        try:
+            det = _json.loads(row["detalhes_json"] or "{}") or {}
+        except Exception:
+            det = {}
+        det.update(ia)
+        conn.execute(
+            "UPDATE concursos SET detalhes_json = ? WHERE hash = ?",
+            (_json.dumps(det, ensure_ascii=False), hash_),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def contar_detalhados():
     # Conta quantos concursos ja foram enriquecidos (para o status).
     conn = conectar()

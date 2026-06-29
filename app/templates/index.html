@@ -148,6 +148,27 @@
         <b>topico</b> acima e pronto. Tambem da para rodar o ntfy no seu Umbrel
         e apontar o servidor para ele.
       </p>
+
+      <h3>Inteligencia (IA) &mdash; opcional</h3>
+      <p class="dica">
+        Cole uma chave <b>gratuita</b> da <b>Groq</b> e a leitura diaria passa a
+        gerar um <b>resumo</b> e um <b>plano de estudo de TI</b> para cada
+        concurso. Sem chave, nada muda (o app continua leve). Crie a sua em
+        <code>console.groq.com/keys</code>.
+      </p>
+      <div class="campo-grupo">
+        <label>Chave de IA (Groq)</label>
+        <input id="perfil-ia-key" type="password" placeholder="gsk_..." autocomplete="off" />
+      </div>
+      <div class="campo-grupo">
+        <label>Modelo (opcional)</label>
+        <input id="perfil-ia-model" placeholder="llama-3.1-8b-instant" />
+      </div>
+      <div class="acoes-sheet">
+        <button class="acao acao-secundaria" id="perfil-ia-testar">Testar IA</button>
+        <button class="acao acao-secundaria" id="perfil-ia-gerar">Gerar resumos agora</button>
+      </div>
+      <div class="ok-msg" id="perfil-ia-msg"></div>
     </div>
   </section>
 

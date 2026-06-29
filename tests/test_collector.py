@@ -93,6 +93,38 @@ def test_para_linha_db_monta_blob_sem_acento():
     assert linha["blob"] == linha["blob"].lower()
 
 
+def test_ia_desligada_sem_chave(monkeypatch):
+    # Sem chave no perfil nem no ambiente, a IA fica desligada (None).
+    monkeypatch.setattr(collector, "carregar_perfil", lambda: {})
+    monkeypatch.delenv("IA_KEY", raising=False)
+    assert collector._config_ia() is None
+
+
+def test_ia_config_le_chave_do_perfil(monkeypatch):
+    monkeypatch.setattr(collector, "carregar_perfil",
+                        lambda: {"ia_key": "gsk_teste", "ia_model": "modelo-x"})
+    cfg = collector._config_ia()
+    assert cfg["key"] == "gsk_teste"
+    assert cfg["modelo"] == "modelo-x"
+    assert "groq.com" in cfg["url"]
+
+
+def test_gerar_resumo_ia_formata_saida(monkeypatch):
+    # Com a resposta do modelo simulada, monta ia_resumo e ia_estudo.
+    monkeypatch.setattr(collector, "_chamar_ia", lambda cfg, texto: {
+        "resumo": "Concurso de TI com 10 vagas.",
+        "plano_estudo": ["Redes", "Banco de Dados", "Seguranca"],
+    })
+    out = collector.gerar_resumo_ia({"modelo": "x"}, "texto do edital")
+    assert out["ia_resumo"] == "Concurso de TI com 10 vagas."
+    assert "Redes" in out["ia_estudo"] and "•" in out["ia_estudo"]
+
+
+def test_gerar_resumo_ia_none_quando_modelo_falha(monkeypatch):
+    monkeypatch.setattr(collector, "_chamar_ia", lambda cfg, texto: None)
+    assert collector.gerar_resumo_ia({"modelo": "x"}, "texto") is None
+
+
 def test_data_prova_iso():
     assert collector.data_prova_iso("15 de agosto de 2026") == "2026-08-15"
     assert collector.data_prova_iso("Prova em 3 de marco de 2027") == "2027-03-03"

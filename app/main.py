@@ -339,6 +339,19 @@ def api_notificar_teste():
     return {"ok": ok}
 
 
+@app.post("/api/ia-teste")
+def api_ia_teste():
+    # Valida a chave/modelo de IA com uma chamada minima (botao "testar IA").
+    return collector.testar_ia()
+
+
+@app.post("/api/ia-gerar")
+def api_ia_gerar():
+    # Dispara um lote de geracao de IA em background (botao "gerar agora").
+    threading.Thread(target=collector.enriquecer_ia_tudo, daemon=True).start()
+    return {"ok": True, "mensagem": "gerando resumos de IA em background"}
+
+
 @app.get("/api/provas")
 def api_provas(q: str = Query(default=None, description="Cargo ou termo")):
     # Lista provas anteriores do PCI Concursos para treinar (por cargo/termo).

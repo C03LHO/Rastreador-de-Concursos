@@ -961,6 +961,133 @@ def enriquecer_tudo():
     return total
 
 
+# ----------------------------------------------------------------------------
+# IA opcional (Groq / endpoint compativel com OpenAI) -- "assistente do edital"
+#
+# Totalmente opt-in: so roda se houver uma chave salva no Perfil. Sem chave,
+# nada acontece (o Pi nao faz esforco extra). Processa em lotes, com pausa e um
+# teto por rodada para respeitar o limite gratuito; o que sobra fica para o dia
+# seguinte (itens sem "ia_resumo" continuam pendentes). Usa o texto do edital
+# ja salvo no banco, entao nao baixa nada de novo.
+# ----------------------------------------------------------------------------
+
+GROQ_URL_PADRAO = "https://api.groq.com/openai/v1/chat/completions"
+IA_MODELO_PADRAO = os.environ.get("IA_MODELO", "llama-3.1-8b-instant")
+IA_MAX_POR_RODADA = int(os.environ.get("IA_MAX_POR_RODADA", "60"))
+IA_PAUSA = float(os.environ.get("IA_PAUSA", "2.0"))
+IA_MAX_CHARS = int(os.environ.get("IA_MAX_CHARS", "5000"))
+
+_IA_SISTEMA = (
+    "Voce ajuda um candidato da area de TI a entender editais de concurso "
+    "publico. Responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON."
+)
+
+
+def _config_ia(perfil=None):
+    # Le a configuracao de IA do perfil (ou do ambiente). None = desligada.
+    perfil = perfil if perfil is not None else carregar_perfil()
+    key = (perfil.get("ia_key") or os.environ.get("IA_KEY") or "").strip()
+    if not key:
+        return None
+    return {
+        "key": key,
+        "modelo": (perfil.get("ia_model") or IA_MODELO_PADRAO).strip(),
+        "url": (perfil.get("ia_url") or GROQ_URL_PADRAO).strip(),
+    }
+
+
+def _chamar_ia(cfg, texto):
+    # Chama a API e devolve o JSON do modelo (dict) ou None. Best-effort.
+    prompt = (
+        "A partir do texto do edital abaixo, gere um JSON com exatamente estas "
+        "chaves:\n"
+        '- "resumo": 2 a 3 frases objetivas (orgao, vagas, cargos de TI, '
+        "salario e prazo de inscricao, quando houver).\n"
+        '- "plano_estudo": uma lista (array) de 4 a 8 topicos de TI que o '
+        "candidato deve estudar para ESTE concurso, do mais importante ao menos.\n\n"
+        "Texto do edital:\n<<<\n" + texto[:IA_MAX_CHARS] + "\n>>>"
+    )
+    payload = {
+        "model": cfg["modelo"], "temperature": 0.2, "max_tokens": 700,
+        "messages": [
+            {"role": "system", "content": _IA_SISTEMA},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    try:
+        r = httpx.post(
+            cfg["url"], json=payload, timeout=60,
+            headers={"Authorization": f"Bearer {cfg['key']}",
+                     "Content-Type": "application/json"},
+        )
+        if r.status_code != 200:
+            print(f"[ia] HTTP {r.status_code}: {r.text[:160]}")
+            return None
+        conteudo = r.json()["choices"][0]["message"]["content"]
+    except Exception as erro:
+        print(f"[ia] erro: {erro}")
+        return None
+    # Extrai o primeiro bloco {...} (alguns modelos cercam com texto).
+    m = re.search(r"\{.*\}", conteudo, re.S)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def gerar_resumo_ia(cfg, texto):
+    # Devolve {"ia_resumo": str, "ia_estudo": str} ou None.
+    d = _chamar_ia(cfg, texto)
+    if not d:
+        return None
+    saida = {}
+    if d.get("resumo"):
+        saida["ia_resumo"] = str(d["resumo"]).strip()[:900]
+    plano = d.get("plano_estudo")
+    if isinstance(plano, list) and plano:
+        saida["ia_estudo"] = " • ".join(str(x).strip() for x in plano if x)[:1400]
+    elif plano:
+        saida["ia_estudo"] = str(plano).strip()[:1400]
+    return saida or None
+
+
+def enriquecer_ia_tudo():
+    # Gera o resumo/plano de estudo de IA para os concursos de TI que ainda nao
+    # tem. Sem chave configurada, sai sem fazer nada.
+    cfg = _config_ia()
+    if not cfg:
+        return 0
+    pendentes = db.concursos_para_ia(IA_MAX_POR_RODADA)
+    if not pendentes:
+        return 0
+    feitos = 0
+    for c in pendentes:
+        texto = " ".join(p for p in (c.get("resumo"), c.get("blob_detalhe")) if p)
+        if len(texto) < 60:
+            continue
+        res = gerar_resumo_ia(cfg, texto)
+        if res:
+            db.adicionar_detalhes_ia(c["hash"], res)
+            feitos += 1
+        time.sleep(IA_PAUSA)
+    print(f"[ia] resumo/plano de estudo gerado para {feitos} concursos de TI")
+    return feitos
+
+
+def testar_ia():
+    # Valida a configuracao de IA com uma chamada minima (para o botao "testar").
+    cfg = _config_ia()
+    if not cfg:
+        return {"ok": False, "erro": "Configure a chave de IA primeiro."}
+    res = gerar_resumo_ia(
+        cfg, "Concurso para Analista de Sistemas. Conteudo: banco de dados e redes.")
+    if res:
+        return {"ok": True, "modelo": cfg["modelo"]}
+    return {"ok": False, "erro": "A IA nao respondeu. Confira a chave e o modelo."}
+
+
 def coletar_e_enriquecer():
     # Coleta a listagem e em seguida le todos os editais. Usado no boot e no
     # agendamento diario das 4h. Segura a trava durante TODO o processo (coleta
@@ -972,6 +1099,9 @@ def coletar_e_enriquecer():
     try:
         _coletar_tudo()
         enriquecer_tudo()
+        # Passo de IA (opcional): so roda se houver chave configurada. Usa o
+        # texto do edital ja salvo, sem rebaixar a rede.
+        enriquecer_ia_tudo()
     finally:
         _LOCK_COLETA.release()
 

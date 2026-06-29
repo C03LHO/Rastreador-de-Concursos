@@ -108,6 +108,31 @@ def test_favoritos_alternar_e_listar(banco):
     assert set(banco.hashes_favoritos()) == {"tarde"}
 
 
+def test_concursos_para_ia_e_merge(banco):
+    import json
+    # Item de TI ja enriquecido, ainda sem resumo de IA -> entra na fila.
+    banco.upsert_concurso(item_listagem("ti1"))
+    banco.atualizar_detalhe("ti1", {
+        "data_fim": "2030-01-01", "blob_detalhe": "texto do edital de ti",
+        "detalhes_json": json.dumps({"cargos_ti": "Programador"}),
+    })
+    # Item sem TI -> NAO entra.
+    banco.upsert_concurso(item_listagem("x1", link="https://exemplo/x1"))
+    banco.atualizar_detalhe("x1", {"data_fim": "2030-01-01",
+                                   "detalhes_json": json.dumps({"banca": "FGV"})})
+
+    fila = banco.concursos_para_ia(10)
+    assert [c["hash"] for c in fila] == ["ti1"]
+
+    # Apos gravar o resumo de IA, sai da fila e o detalhe e mesclado.
+    banco.adicionar_detalhes_ia("ti1", {"ia_resumo": "Resumo.", "ia_estudo": "Redes"})
+    assert banco.concursos_para_ia(10) == []
+    c = banco.get_concurso("ti1")
+    det = json.loads(c["detalhes_json"])
+    assert det["cargos_ti"] == "Programador"  # preservado
+    assert det["ia_resumo"] == "Resumo."       # adicionado
+
+
 def test_meta_grava_e_le(banco):
     assert banco.get_meta("inexistente") is None
     banco.set_meta("ultima_coleta", "2026-06-28T10:00:00")
