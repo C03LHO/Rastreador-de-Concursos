@@ -133,6 +133,26 @@ def test_concursos_para_ia_e_merge(banco):
     assert det["ia_resumo"] == "Resumo."       # adicionado
 
 
+def test_backup_cria_e_rotaciona(banco):
+    import os, glob
+    banco.upsert_concurso(item_listagem("h1"))
+    # Faz 18 backups mantendo no maximo 15 -> sobram 15.
+    for _ in range(18):
+        banco.fazer_backup(max_manter=15)
+    dir_bkp = os.path.join(os.path.dirname(os.path.abspath(banco.DB_PATH)), "backups")
+    arquivos = glob.glob(os.path.join(dir_bkp, "concursos-*.db"))
+    assert len(arquivos) == 15
+    # O backup e um SQLite valido com os dados.
+    import sqlite3
+    mais_novo = sorted(arquivos)[-1]
+    conn = sqlite3.connect(mais_novo)
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM concursos").fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 1
+
+
 def test_meta_grava_e_le(banco):
     assert banco.get_meta("inexistente") is None
     banco.set_meta("ultima_coleta", "2026-06-28T10:00:00")

@@ -30,6 +30,11 @@ STATIC_DIR = Path(__file__).parent / "static"
 scheduler = None
 
 
+def _backup_agendado():
+    # Backup diario do banco, mantendo no maximo MAX_BACKUPS copias.
+    db.fazer_backup(int(os.environ.get("MAX_BACKUPS", "15")))
+
+
 def _agendar():
     # Cria e inicia o agendador da coleta e da leitura diaria de editais.
     global scheduler
@@ -80,6 +85,19 @@ def _agendar():
         hour=hora_digest,
         minute=0,
         id="digest_diario",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    # Backup diario do banco (mantem os N mais recentes). O Pi usa cartao SD,
+    # entao vale guardar copias para nao perder a base por corrupcao.
+    hora_backup = int(os.environ.get("HORA_BACKUP", "3"))
+    scheduler.add_job(
+        _backup_agendado,
+        "cron",
+        hour=hora_backup,
+        minute=0,
+        id="backup_diario",
         max_instances=1,
         coalesce=True,
         replace_existing=True,
@@ -350,6 +368,16 @@ def api_ia_gerar():
     # Dispara um lote de geracao de IA em background (botao "gerar agora").
     threading.Thread(target=collector.enriquecer_ia_tudo, daemon=True).start()
     return {"ok": True, "mensagem": "gerando resumos de IA em background"}
+
+
+@app.post("/api/backup")
+def api_backup():
+    # Faz um backup imediato do banco (mantendo os N mais recentes).
+    try:
+        caminho = db.fazer_backup(int(os.environ.get("MAX_BACKUPS", "15")))
+        return {"ok": True, "arquivo": os.path.basename(caminho)}
+    except Exception as erro:
+        return {"ok": False, "erro": str(erro)}
 
 
 @app.get("/api/provas")

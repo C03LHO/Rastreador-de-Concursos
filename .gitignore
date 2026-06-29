@@ -2,6 +2,9 @@
 *.db
 concursos.db
 
+# Backups do banco
+backups/
+
 # Cache do Python
 __pycache__/
 *.pyc

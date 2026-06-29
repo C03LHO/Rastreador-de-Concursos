@@ -27,6 +27,9 @@ services:
       - PRAZO_AVISO_DIAS=3
       # Hora (0-23) do resumo diario (digest) dos novos concursos de TI.
       - HORA_DIGEST=7
+      # Backup diario do banco: hora e quantas copias manter (rotaciona).
+      - HORA_BACKUP=3
+      - MAX_BACKUPS=15
     volumes:
       # Volume nomeado para o arquivo SQLite sobreviver a recriacao do container.
       - concursos_dados:/data

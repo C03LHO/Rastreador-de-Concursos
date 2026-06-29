@@ -7,6 +7,7 @@ Cada operacao abre e fecha a sua propria conexao. Isso e simples e seguro para
 o uso simultaneo entre as threads do scheduler e as requisicoes da API.
 """
 
+import glob
 import os
 import sqlite3
 import unicodedata
@@ -521,3 +522,38 @@ def get_meta(chave):
         return row["valor"] if row else None
     finally:
         conn.close()
+
+
+def fazer_backup(max_manter=15):
+    # Faz um backup CONSISTENTE do SQLite (via API de backup, segura mesmo com o
+    # WAL ativo) numa pasta "backups" ao lado do banco, e mantem apenas os N
+    # mais recentes -- importante porque o banco roda num cartao SD no Pi.
+    base_dir = os.path.dirname(os.path.abspath(DB_PATH)) or "."
+    dir_bkp = os.path.join(base_dir, "backups")
+    os.makedirs(dir_bkp, exist_ok=True)
+    destino = os.path.join(
+        dir_bkp, datetime.now().strftime("concursos-%Y%m%d-%H%M%S-%f.db"))
+
+    origem = conectar()
+    try:
+        dst = sqlite3.connect(destino)
+        try:
+            origem.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        origem.close()
+
+    # Rotaciona: remove os mais antigos que ultrapassarem o limite.
+    removidos = 0
+    if max_manter and max_manter > 0:
+        arquivos = sorted(glob.glob(os.path.join(dir_bkp, "concursos-*.db")))
+        for antigo in arquivos[:-max_manter]:
+            try:
+                os.remove(antigo)
+                removidos += 1
+            except OSError:
+                pass
+    print(f"[backup] {os.path.basename(destino)} criado; "
+          f"{removidos} antigo(s) removido(s) (limite {max_manter})")
+    return destino
