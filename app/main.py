@@ -390,6 +390,12 @@ def api_backup():
         return {"ok": False, "erro": str(erro)}
 
 
+@app.get("/api/plano-estudo")
+def api_plano_estudo():
+    # Plano de estudo consolidado: o que estudar para cobrir os concursos de TI.
+    return collector.plano_estudo_consolidado()
+
+
 @app.get("/api/provas")
 def api_provas(q: str = Query(default=None, description="Cargo ou termo")):
     # Lista provas anteriores do PCI Concursos para treinar (por cargo/termo).

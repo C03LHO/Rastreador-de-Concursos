@@ -616,7 +616,33 @@ let treinarTimer = null;
 function abrirTreinar(termoInicial) {
   abrirView("view-treinar");
   if (termoInicial != null) $("treinar-q").value = termoInicial;
+  carregarPlanoEstudo();
   buscarProvas();
+}
+
+// Plano de estudo consolidado: o que estudar para cobrir os concursos de TI.
+async function carregarPlanoEstudo() {
+  const box = $("plano-estudo");
+  box.innerHTML = '<p class="dica">Carregando...</p>';
+  try {
+    const d = await (await fetch("/api/plano-estudo")).json();
+    const topicos = d.topicos || [];
+    if (!topicos.length) {
+      box.innerHTML = '<p class="dica">Ainda nao ha conteudo de TI mapeado nos concursos abertos. Volte depois que os editais forem lidos.</p>';
+      return;
+    }
+    const max = topicos[0].n || 1;
+    box.innerHTML = `
+      <p class="dica">Baseado em <b>${d.concursos_com_conteudo}</b> de ${d.total_abertos_ti} concursos de TI abertos. Foque nos temas que mais se repetem:</p>
+      ${topicos.map((t) => `
+        <div class="plano-item">
+          <div class="plano-cab"><span>${esc(t.topico)}</span><span class="plano-n">${t.n}</span></div>
+          <div class="plano-barra"><div class="plano-fill" style="width:${Math.round((t.n / max) * 100)}%"></div></div>
+        </div>`).join("")}
+    `;
+  } catch (e) {
+    box.innerHTML = '<p class="dica">Nao foi possivel carregar o plano agora.</p>';
+  }
 }
 async function buscarProvas() {
   const termo = $("treinar-q").value.trim();

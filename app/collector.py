@@ -1114,6 +1114,40 @@ def enriquecer_ia_tudo():
     return feitos
 
 
+def plano_estudo_consolidado():
+    # Junta os topicos de TI ("o que cai") de TODOS os concursos de TI abertos e
+    # conta em quantos cada um aparece -> diz o que estudar para cobrir o maximo.
+    # Nao usa IA: agrega o que a heuristica ja extraiu.
+    from .areas import AREAS
+    abertos = db.buscar_concursos(area_palavras=AREAS["ti"], tipo="aberto", limite=500)
+    contagem = {}
+    com_conteudo = 0
+    for c in abertos:
+        try:
+            det = json.loads(c.get("detalhes_json") or "{}")
+        except Exception:
+            det = {}
+        cti = det.get("conteudo_ti")
+        if cti:
+            topicos = [t.strip() for t in cti.split(",") if t.strip()]
+        else:
+            # Fallback: calcula na hora a partir do texto ja salvo do edital
+            # (sem rede), para concursos lidos antes de o campo existir.
+            base = db.remover_acentos(
+                ((c.get("blob_detalhe") or "") + " " + (c.get("resumo") or "")).lower())
+            topicos = _extrair_conteudo_ti(base)
+        if topicos:
+            com_conteudo += 1
+        for t in topicos:
+            contagem[t] = contagem.get(t, 0) + 1
+    ordenado = sorted(contagem.items(), key=lambda kv: (-kv[1], kv[0]))
+    return {
+        "total_abertos_ti": len(abertos),
+        "concursos_com_conteudo": com_conteudo,
+        "topicos": [{"topico": t, "n": n} for t, n in ordenado],
+    }
+
+
 def testar_ia():
     # Valida a configuracao de IA com uma chamada minima (para o botao "testar").
     cfg = _config_ia()

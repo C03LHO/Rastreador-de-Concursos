@@ -133,6 +133,24 @@ def test_concursos_para_ia_e_merge(banco):
     assert det["ia_resumo"] == "Resumo."       # adicionado
 
 
+def test_plano_estudo_consolidado(banco):
+    import json
+    from app import collector
+    banco.upsert_concurso(item_listagem("ti1", blob="analista de sistemas ti", tipo="aberto"))
+    banco.atualizar_detalhe("ti1", {"data_fim": "2030-01-01", "detalhes_json": json.dumps(
+        {"cargos_ti": "Analista De Sistemas", "conteudo_ti": "Banco de Dados, Redes de Computadores"})})
+    banco.upsert_concurso(item_listagem("ti2", link="https://exemplo/ti2", blob="programador ti", tipo="aberto"))
+    banco.atualizar_detalhe("ti2", {"data_fim": "2030-01-01", "detalhes_json": json.dumps(
+        {"cargos_ti": "Programador", "conteudo_ti": "Banco de Dados, Seguranca da Informacao"})})
+
+    plano = collector.plano_estudo_consolidado()
+    topicos = {t["topico"]: t["n"] for t in plano["topicos"]}
+    assert topicos.get("Banco de Dados") == 2   # nos dois concursos
+    assert plano["concursos_com_conteudo"] == 2
+    # O mais frequente vem primeiro.
+    assert plano["topicos"][0]["topico"] == "Banco de Dados"
+
+
 def test_backup_cria_e_rotaciona(banco):
     import os, glob
     banco.upsert_concurso(item_listagem("h1"))
