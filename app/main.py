@@ -157,6 +157,7 @@ def api_concursos(
     cargo: str = Query(default=None, description="Texto livre, busca no blob"),
     tipo: str = Query(default=None, description="aberto ou previsto"),
     q: str = Query(default=None, description="Busca livre no blob"),
+    nivel: str = Query(default=None, description="Escolaridade: medio, superior..."),
     limite: int = Query(default=100, description="Quantidade maxima de itens"),
     encerrados: bool = Query(default=False, description="Incluir inscricoes encerradas"),
 ):
@@ -172,6 +173,7 @@ def api_concursos(
         q=q,
         limite=limite,
         incluir_encerrados=encerrados,
+        nivel=nivel,
     )
     return {"total": len(concursos), "concursos": concursos}
 
@@ -200,6 +202,7 @@ def api_concursos_csv(
     cargo: str = Query(default=None),
     tipo: str = Query(default=None),
     q: str = Query(default=None),
+    nivel: str = Query(default=None),
     limite: int = Query(default=1000, description="Quantidade maxima de itens"),
     encerrados: bool = Query(default=False),
 ):
@@ -208,7 +211,7 @@ def api_concursos_csv(
     area_palavras = AREAS.get(area.lower()) if area else None
     concursos = db.buscar_concursos(
         uf=uf, area_palavras=area_palavras, cidade=cidade, cargo=cargo,
-        tipo=tipo, q=q, limite=limite, incluir_encerrados=encerrados,
+        tipo=tipo, q=q, limite=limite, incluir_encerrados=encerrados, nivel=nivel,
     )
 
     buffer = io.StringIO()
@@ -416,3 +419,15 @@ def api_favoritos():
 def api_favoritar(hash_: str):
     # Alterna o favorito de um concurso. Retorna se ficou favoritado.
     return {"favorito": db.alternar_favorito(hash_)}
+
+
+@app.get("/api/inscritos")
+def api_inscritos():
+    # Hashes marcados como "ja me inscrevi" (para a tela marcar o selo).
+    return {"hashes": db.hashes_inscritos()}
+
+
+@app.post("/api/inscritos/{hash_}")
+def api_inscrever(hash_: str):
+    # Alterna o "ja me inscrevi" de um concurso. Retorna se ficou marcado.
+    return {"inscrito": db.alternar_inscrito(hash_)}

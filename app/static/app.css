@@ -234,6 +234,8 @@ body {
 .pill.uf { color: var(--acento); font-weight: 700; letter-spacing: 0.5px; }
 /* Destaque de TI (foco do app). */
 .pill.ti { color: #08110f; background: var(--acento); border-color: var(--acento); font-weight: 700; letter-spacing: 0.5px; }
+/* Selo "ja me inscrevi". */
+.pill.inscrito { color: var(--aberto); background: var(--aberto-bg); border-color: rgba(52,211,153,0.4); font-weight: 700; }
 /* Prazo de inscricao. */
 .pill.prazo { color: var(--acento); border-color: rgba(45,212,191,0.4); }
 .pill.urgente { color: #fb7185; border-color: rgba(251,113,133,0.4); background: rgba(251,113,133,0.1); }

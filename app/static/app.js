@@ -12,7 +12,7 @@ const UFS = ["pa","ac","ap","am","ro","rr","to",
   "al","ba","ce","ma","pb","pe","pi","rn","se","go"];
 
 // Estado atual dos filtros.
-const filtros = { q: "", area: "", uf: "", tipo: "", encerrados: false };
+const filtros = { q: "", area: "", uf: "", tipo: "", encerrados: false, nivel: "" };
 
 // ---------- Montagem dos filtros ----------
 function montarUFs() {
@@ -23,6 +23,11 @@ function montarUFs() {
     sel.appendChild(op);
   });
   sel.addEventListener("change", () => { filtros.uf = sel.value; buscar(); });
+}
+
+function montarNivel() {
+  const sel = $("nivel");
+  sel.addEventListener("change", () => { filtros.nivel = sel.value; buscar(); });
 }
 
 async function montarChips() {
@@ -117,6 +122,7 @@ function montarQuery() {
   if (filtros.area) p.append("area", filtros.area);
   if (filtros.uf) p.append("uf", filtros.uf);
   if (filtros.tipo) p.append("tipo", filtros.tipo);
+  if (filtros.nivel) p.append("nivel", filtros.nivel);
   if (filtros.encerrados) p.append("encerrados", "1");
   p.append("limite", "300");
   return p.toString();
@@ -129,6 +135,7 @@ function montarQueryCSV() {
   if (filtros.area) p.append("area", filtros.area);
   if (filtros.uf) p.append("uf", filtros.uf);
   if (filtros.tipo) p.append("tipo", filtros.tipo);
+  if (filtros.nivel) p.append("nivel", filtros.nivel);
   if (filtros.encerrados) p.append("encerrados", "1");
   p.append("limite", "5000");
   return p.toString();
@@ -154,7 +161,8 @@ async function buscar(silencioso) {
 }
 
 function temFiltro() {
-  return !!(filtros.q || filtros.area || filtros.uf || filtros.tipo || filtros.encerrados);
+  return !!(filtros.q || filtros.area || filtros.uf || filtros.tipo
+    || filtros.encerrados || filtros.nivel);
 }
 
 function renderizar(lista, total) {
@@ -180,10 +188,11 @@ function renderizar(lista, total) {
 // Reseta todos os filtros e a busca para o estado inicial.
 function limparFiltros() {
   filtros.q = ""; filtros.area = ""; filtros.uf = ""; filtros.tipo = "";
-  filtros.encerrados = false;
+  filtros.encerrados = false; filtros.nivel = "";
   $("q").value = "";
   $("busca-wrap").classList.remove("tem-texto");
   $("uf").value = "";
+  $("nivel").value = "";
   [...$("chips").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
   [...$("seg-tipo").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
   buscar();
@@ -238,6 +247,7 @@ function card(c) {
     <div class="meta">
       <span class="pill uf">${esc((c.uf || "").toUpperCase())}</span>
       ${det.cargos_ti ? `<span class="pill ti">TI</span>` : ""}
+      ${inscritosSet.has(c.hash) ? `<span class="pill inscrito">✓ Inscrito</span>` : ""}
       <span class="pill">Vagas: <b>${esc(vagas)}</b></span>
       ${det.salario ? `<span class="pill">${esc(det.salario)}</span>` : ""}
       ${pilulaPrazo(c)}
@@ -249,8 +259,16 @@ function card(c) {
   return el;
 }
 
-// ---------- Favoritos ----------
+// ---------- Favoritos / inscricoes ----------
 let favoritosSet = new Set();
+let inscritosSet = new Set();
+
+async function carregarInscritos() {
+  try {
+    const d = await (await fetch("/api/inscritos")).json();
+    inscritosSet = new Set(d.hashes || []);
+  } catch (e) {}
+}
 
 function estrelaHTML(hash) {
   const on = favoritosSet.has(hash);
@@ -374,6 +392,10 @@ function abrirDetalhe(c) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         Adicionar ao calendario
       </a>` : ""}
+      <button class="acao acao-secundaria" id="btn-inscrito">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        <span id="btn-inscrito-txt">${inscritosSet.has(c.hash) ? "Inscrito ✓ (desmarcar)" : "Marcar: já me inscrevi"}</span>
+      </button>
       <button class="acao acao-secundaria" id="btn-provas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         Provas anteriores
@@ -400,6 +422,14 @@ function abrirDetalhe(c) {
   $("btn-provas").addEventListener("click", () => {
     fecharSheet();
     abrirTreinar(adivinharCargo(c));
+  });
+  $("btn-inscrito").addEventListener("click", async () => {
+    try {
+      const r = await (await fetch("/api/inscritos/" + c.hash, { method: "POST" })).json();
+      if (r.inscrito) inscritosSet.add(c.hash); else inscritosSet.delete(c.hash);
+      $("btn-inscrito-txt").textContent = r.inscrito ? "Inscrito ✓ (desmarcar)" : "Marcar: já me inscrevi";
+      buscar(true);  // atualiza os selos nos cards
+    } catch (e) {}
   });
   ligarPergunta(c);
   ligarEstrelas($("sheet-conteudo"));
@@ -830,6 +860,7 @@ function esc(t) {
 
 // ---------- Inicio ----------
 montarUFs();
+montarNivel();
 montarChipsPA();
 montarTipo();
 montarBusca();
@@ -837,7 +868,7 @@ montarAtualizar();
 montarPerfil();
 atualizarStatus();
 montarChips()
-  .then(() => carregarFavoritos())
+  .then(() => Promise.all([carregarFavoritos(), carregarInscritos()]))
   .then(() => buscar());
 acompanharColeta();
 registrarSW();

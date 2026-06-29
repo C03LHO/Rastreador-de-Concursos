@@ -102,6 +102,14 @@ def iniciar_banco():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inscricoes (
+                hash TEXT PRIMARY KEY,
+                criado_em TEXT
+            )
+            """
+        )
 
         # Migracao: adiciona colunas novas em bancos criados em versoes antigas.
         existentes = {r["name"] for r in conn.execute("PRAGMA table_info(concursos)")}
@@ -311,8 +319,19 @@ def contar_detalhados():
         conn.close()
 
 
+def _clausula_multitermo(texto_sql, termo):
+    # Busca por VARIAS palavras: exige TODAS (E), em qualquer ordem. Assim
+    # "analista belem" acha concursos que tenham as duas, mesmo separadas.
+    palavras = [remover_acentos(p) for p in (termo or "").lower().split() if p.strip()]
+    if not palavras:
+        return None, []
+    cl = " AND ".join(f"{texto_sql} LIKE ?" for _ in palavras)
+    return f"({cl})", [f"%{p}%" for p in palavras]
+
+
 def buscar_concursos(uf=None, area_palavras=None, cidade=None, cargo=None,
-                     tipo=None, q=None, limite=100, incluir_encerrados=False):
+                     tipo=None, q=None, limite=100, incluir_encerrados=False,
+                     nivel=None):
     # Monta a consulta dinamicamente. Todos os filtros sao combinados em E.
     clausulas = []
     params = []
@@ -335,17 +354,17 @@ def buscar_concursos(uf=None, area_palavras=None, cidade=None, cargo=None,
     # o texto extraido do PDF do edital, quando lido).
     texto_sql = "(coalesce(blob,'') || ' ' || coalesce(blob_detalhe,''))"
 
-    if cidade:
-        clausulas.append(f"{texto_sql} LIKE ?")
-        params.append(f"%{remover_acentos(cidade.lower())}%")
+    for termo in (cidade, cargo, q):
+        cl, ps = _clausula_multitermo(texto_sql, termo)
+        if cl:
+            clausulas.append(cl)
+            params.extend(ps)
 
-    if cargo:
-        clausulas.append(f"{texto_sql} LIKE ?")
-        params.append(f"%{remover_acentos(cargo.lower())}%")
-
-    if q:
-        clausulas.append(f"{texto_sql} LIKE ?")
-        params.append(f"%{remover_acentos(q.lower())}%")
+    # Filtro de escolaridade (medio, superior, tecnico, fundamental): a leitura
+    # do edital guarda isso em detalhes_json (ex: "Medio, Superior").
+    if nivel:
+        clausulas.append("coalesce(detalhes_json,'') LIKE ?")
+        params.append(f"%{remover_acentos(nivel.lower().strip())}%")
 
     if area_palavras:
         # A area casa quando QUALQUER uma das palavras aparece no texto.
@@ -439,6 +458,35 @@ def hashes_favoritos():
     conn = conectar()
     try:
         cur = conn.execute("SELECT hash FROM favoritos")
+        return [r["hash"] for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def alternar_inscrito(hash_):
+    # Marca/desmarca "ja me inscrevi". Retorna True se ficou marcado.
+    conn = conectar()
+    try:
+        cur = conn.execute("SELECT 1 FROM inscricoes WHERE hash = ?", (hash_,))
+        if cur.fetchone():
+            conn.execute("DELETE FROM inscricoes WHERE hash = ?", (hash_,))
+            conn.commit()
+            return False
+        conn.execute(
+            "INSERT INTO inscricoes (hash, criado_em) VALUES (?, ?)",
+            (hash_, datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def hashes_inscritos():
+    # Lista os hashes marcados como "ja me inscrevi".
+    conn = conectar()
+    try:
+        cur = conn.execute("SELECT hash FROM inscricoes")
         return [r["hash"] for r in cur.fetchall()]
     finally:
         conn.close()

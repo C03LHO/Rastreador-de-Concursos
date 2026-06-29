@@ -154,9 +154,12 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `POST` | `/api/backup` | Faz um backup imediato do banco (rotaciona em `MAX_BACKUPS`). |
 | `GET` | `/api/favoritos` | Lista os concursos favoritados (ordenados por prazo). |
 | `POST` | `/api/favoritos/{hash}` | Favorita ou desfavorita um concurso. |
+| `GET` | `/api/inscritos` | Hashes marcados como "já me inscrevi". |
+| `POST` | `/api/inscritos/{hash}` | Alterna o "já me inscrevi" de um concurso. |
+| `GET` | `/api/plano-estudo` | Plano de estudo consolidado dos concursos de TI abertos. |
 | `POST` | `/api/coletar` | Força uma coleta imediata (em segundo plano). |
 
-**Filtros de `/api/concursos`** (todos opcionais, combinados em E lógico): `uf`, `area`, `cidade`, `cargo`, `tipo` (`aberto`/`previsto`), `q` (busca livre) e `limite`. A resposta é `{ "total": N, "concursos": [...] }`.
+**Filtros de `/api/concursos`** (todos opcionais, combinados em E lógico): `uf`, `area`, `cidade`, `cargo`, `tipo` (`aberto`/`previsto`), `q` (busca livre, multi-palavra), `nivel` (escolaridade: `fundamental`/`medio`/`tecnico`/`superior`) e `limite`. A resposta é `{ "total": N, "concursos": [...] }`.
 
 ```bash
 # Concursos de TI no Pará

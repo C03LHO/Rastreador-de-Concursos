@@ -87,6 +87,40 @@ def test_dedup_entre_fontes_esconde_pci(banco):
     assert hashes == {"cnb"}
 
 
+def test_busca_multitermo_exige_todas_as_palavras(banco):
+    banco.upsert_concurso(item_listagem(
+        "a", blob="prefeitura de belem analista de sistemas"))
+    banco.upsert_concurso(item_listagem(
+        "b", link="https://exemplo/b", blob="prefeitura de maraba professor"))
+    # "belem analista" deve achar so o A (tem as duas palavras).
+    achados = {c["hash"] for c in banco.buscar_concursos(q="belem analista")}
+    assert achados == {"a"}
+    # Ordem das palavras nao importa.
+    achados2 = {c["hash"] for c in banco.buscar_concursos(q="analista belem")}
+    assert achados2 == {"a"}
+
+
+def test_filtro_nivel_escolaridade(banco):
+    import json
+    banco.upsert_concurso(item_listagem("sup"))
+    banco.atualizar_detalhe("sup", {"data_fim": "2030-01-01",
+        "detalhes_json": json.dumps({"escolaridade": "Medio, Superior"})})
+    banco.upsert_concurso(item_listagem("fund", link="https://exemplo/f"))
+    banco.atualizar_detalhe("fund", {"data_fim": "2030-01-01",
+        "detalhes_json": json.dumps({"escolaridade": "Fundamental"})})
+
+    achados = {c["hash"] for c in banco.buscar_concursos(nivel="superior")}
+    assert achados == {"sup"}
+
+
+def test_inscritos_alternar(banco):
+    banco.upsert_concurso(item_listagem("h1"))
+    assert banco.alternar_inscrito("h1") is True
+    assert banco.hashes_inscritos() == ["h1"]
+    assert banco.alternar_inscrito("h1") is False
+    assert banco.hashes_inscritos() == []
+
+
 def test_favoritos_alternar_e_listar(banco):
     futuro = (date.today() + timedelta(days=5)).isoformat()
     mais_futuro = (date.today() + timedelta(days=40)).isoformat()
