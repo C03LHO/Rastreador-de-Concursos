@@ -7,6 +7,10 @@ services:
     environment:
       # Caminho do banco dentro do container, dentro do volume persistido.
       - DB_PATH=/data/concursos.db
+      # Estados a coletar (foco regional). Vazio = Norte + Nordeste + GO.
+      # Os concursos nacionais/federais entram sempre. Exemplo p/ so o Para:
+      #   - UFS_FOCO=pa
+      - UFS_FOCO=ac,ap,am,pa,ro,rr,to,al,ba,ce,ma,pb,pe,pi,rn,se,go
       # Intervalo da coleta automatica em horas.
       - INTERVALO_HORAS=1
       # Quantos concursos previstos (no maximo) guardar, dos mais recentes.

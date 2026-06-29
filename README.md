@@ -71,7 +71,7 @@ flowchart LR
     T --> E
 ```
 
-1. O **coletor** varre os 27 estados (abertos), os concursos nacionais e os previstos (de hora em hora).
+1. O **coletor** varre os estados do **foco** (regiões Norte e Nordeste + Goiás), os concursos **nacionais/federais** e os previstos (de hora em hora). O foco é configurável pela variável `UFS_FOCO`.
 2. O **enriquecimento** (uma vez por dia, às 4h) abre a página de cada concurso, extrai datas, banca, escolaridade, salário e taxa, e tenta ler o PDF do edital.
 3. Tudo é gravado no **SQLite**, com deduplicação pelo link.
 4. Quando surge um concurso novo do seu **perfil**, o app envia um push via **ntfy**.
@@ -118,6 +118,7 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | Variável | Padrão | O que faz |
 | --- | --- | --- |
 | `DB_PATH` | `/data/concursos.db` | Caminho do arquivo SQLite (persistido no volume). |
+| `UFS_FOCO` | Norte+Nordeste+GO | Estados a coletar (siglas separadas por vírgula). Vazio usa o foco padrão. Os nacionais/federais entram sempre. |
 | `INTERVALO_HORAS` | `1` | Intervalo da coleta da listagem, em horas. |
 | `HORA_LEITURA` | `4` | Hora (fuso America/Belem) da leitura diária completa dos editais. |
 | `MAX_PREVISTOS` | `500` | Quantos concursos previstos guardar (os mais recentes). |

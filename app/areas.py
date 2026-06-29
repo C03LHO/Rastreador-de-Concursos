@@ -8,11 +8,48 @@
 # basta adicionar uma chave com a sua lista de palavras.
 
 AREAS = {
+    # TI e o foco principal: lista ampla, cobrindo todas as subareas de
+    # tecnologia (a busca casa por palavra inteira, entao termos curtos como
+    # "ti" nao casam dentro de "tocantins"). Sem acento ja basta (a busca
+    # ignora acentos), mas mantemos algumas variantes por clareza.
     "ti": [
-        "ti", "informatica", "informática", "sistemas", "dados",
-        "desenvolvedor", "programador", "redes", "suporte tecnico",
-        "suporte técnico", "software", "tecnologia da informacao",
-        "tecnologia da informação", "analista de sistemas",
+        # Termos guarda-chuva
+        "ti", "tic", "informatica", "informática", "computacao", "computação",
+        "tecnologia da informacao", "tecnologia da informação",
+        "tecnologia da informacao e comunicacao",
+        # Cargos de analista
+        "analista de sistemas", "analista de ti",
+        "analista de tecnologia da informacao", "analista de tecnologia",
+        "analista de suporte", "analista de infraestrutura",
+        "analista de redes", "analista de banco de dados", "analista de dados",
+        "analista de seguranca da informacao", "analista de desenvolvimento",
+        # Desenvolvimento / software
+        "desenvolvedor", "desenvolvimento de sistemas", "desenvolvimento de software",
+        "programador", "programacao", "programação", "software",
+        "engenheiro de software", "engenharia de software",
+        "engenharia da computacao", "engenharia de computacao",
+        "engenheiro da computacao", "web", "mobile", "front-end", "back-end",
+        "fullstack", "full stack",
+        # Infraestrutura, redes e suporte
+        "redes", "redes de computadores", "infraestrutura",
+        "administrador de redes", "administrador de sistemas",
+        "suporte tecnico", "suporte técnico", "suporte de ti",
+        "help desk", "helpdesk", "service desk", "manutencao de computadores",
+        # Dados e BI
+        "banco de dados", "dados", "dba", "administrador de banco de dados",
+        "ciencia de dados", "cientista de dados", "analista de bi",
+        "business intelligence", "big data",
+        # Seguranca e tendencias
+        "seguranca da informacao", "segurança da informação",
+        "ciberseguranca", "cibersegurança", "seguranca cibernetica",
+        "devops", "cloud", "computacao em nuvem",
+        "governanca de ti", "governança de ti", "governanca de tecnologia",
+        # Sistemas de informacao e tecnologos / tecnicos
+        "sistemas de informacao", "sistemas de informação",
+        "tecnologo em sistemas", "tecnologo em ti",
+        "tecnico em informatica", "técnico em informática",
+        "tecnico de informatica", "tecnico em ti", "tecnico em redes",
+        "tecnico em manutencao", "operador de computador",
     ],
     "saude": [
         "saude", "saúde", "medico", "médico", "medicina", "enfermeiro",

@@ -7,8 +7,9 @@ const ROTULOS = {
   seguranca: "Seguranca", fiscal_financeiro: "Fiscal / Financeiro",
 };
 
-const UFS = ["ac","al","ap","am","ba","ce","df","es","go","ma","mt","ms",
-  "mg","pa","pb","pr","pe","pi","rj","rn","rs","ro","rr","sc","sp","se","to"];
+// Foco regional: Norte + Nordeste + Goias (mesma lista coletada no servidor).
+const UFS = ["pa","ac","ap","am","ro","rr","to",
+  "al","ba","ce","ma","pb","pe","pi","rn","se","go"];
 
 // Estado atual dos filtros.
 const filtros = { q: "", area: "", uf: "", tipo: "", encerrados: false };
@@ -206,12 +207,21 @@ function pilulaPrazo(c) {
   return "";
 }
 
+// Le os detalhes extras (detalhes_json) de um concurso, com seguranca.
+function detalhesDe(c) {
+  try { return JSON.parse(c.detalhes_json || "{}") || {}; } catch (e) { return {}; }
+}
+
 function card(c) {
   const el = document.createElement("div");
   el.className = "card";
   const aberto = c.tipo === "aberto";
   const orgao = c.orgao || "Orgao nao informado";
-  const vagas = c.vagas || "nao informado";
+  const det = detalhesDe(c);
+  // Prefere o numero de vagas lido do edital; senao, o texto da listagem.
+  const vagas = det.vagas || c.vagas || "nao informado";
+  // Descricao do card: o resumo lido (mais informativo) ou o titulo da fonte.
+  const desc = c.resumo || c.titulo || "";
   el.innerHTML = `
     <div class="card-topo">
       <h3>${esc(orgao)}</h3>
@@ -220,10 +230,12 @@ function card(c) {
         <span class="tag ${aberto ? "tag-aberto" : "tag-previsto"}">${aberto ? "Aberto" : "Previsto"}</span>
       </div>
     </div>
-    ${c.titulo ? `<div class="desc">${esc(c.titulo)}</div>` : ""}
+    ${desc ? `<div class="desc">${esc(desc)}</div>` : ""}
     <div class="meta">
       <span class="pill uf">${esc((c.uf || "").toUpperCase())}</span>
+      ${det.cargos_ti ? `<span class="pill ti">TI</span>` : ""}
       <span class="pill">Vagas: <b>${esc(vagas)}</b></span>
+      ${det.salario ? `<span class="pill">${esc(det.salario)}</span>` : ""}
       ${pilulaPrazo(c)}
     </div>
     <div class="ver-mais">Toque para ver detalhes &rsaquo;</div>
@@ -319,9 +331,10 @@ function abrirDetalhe(c) {
     </div>
 
     ${c.titulo ? `<p class="titulo-det">${esc(c.titulo)}</p>` : ""}
+    ${c.resumo ? `<p class="resumo-det">${esc(c.resumo)}</p>` : ""}
 
     ${periodo ? `<div class="info"><span class="rotulo">Periodo de inscricao</span><span class="valor">${periodo}</span></div>` : ""}
-    <div class="info"><span class="rotulo">Vagas / Cargo</span><span class="valor">${esc(c.vagas || "nao informado")}</span></div>
+    <div class="info"><span class="rotulo">Vagas / Cargo</span><span class="valor">${esc(detalhesDe(c).vagas || c.vagas || "nao informado")}</span></div>
     ${linhasDetalhe(c)}
     <div class="info"><span class="rotulo">Fonte</span><span class="valor">${esc(c.fonte || "Concursos no Brasil")}</span></div>
 
@@ -366,10 +379,12 @@ function abrirDetalhe(c) {
   abrirSheet();
 }
 
-// Rotulos e montagem das informacoes extras (detalhes_json) no detalhe.
+// Rotulos e ordem das informacoes extras (detalhes_json) no detalhe. Os cargos
+// de TI vem primeiro, por serem o foco. A vaga ja e mostrada em "Vagas / Cargo".
 const ROTULOS_DETALHE = {
-  banca: "Banca", escolaridade: "Escolaridade", salario: "Salario",
-  taxa: "Taxa de inscricao", data_prova: "Data da prova",
+  cargos_ti: "Cargos de TI", escolaridade: "Escolaridade", salario: "Salario",
+  taxa: "Taxa de inscricao", jornada: "Jornada", banca: "Banca",
+  data_prova: "Data da prova", cadastro_reserva: "Cadastro de reserva",
 };
 function linhasDetalhe(c) {
   let det = {};

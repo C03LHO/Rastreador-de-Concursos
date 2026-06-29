@@ -232,6 +232,8 @@ body {
 }
 .pill b { color: var(--texto); font-weight: 600; }
 .pill.uf { color: var(--acento); font-weight: 700; letter-spacing: 0.5px; }
+/* Destaque de TI (foco do app). */
+.pill.ti { color: #08110f; background: var(--acento); border-color: var(--acento); font-weight: 700; letter-spacing: 0.5px; }
 /* Prazo de inscricao. */
 .pill.prazo { color: var(--acento); border-color: rgba(45,212,191,0.4); }
 .pill.urgente { color: #fb7185; border-color: rgba(251,113,133,0.4); background: rgba(251,113,133,0.1); }
@@ -246,7 +248,13 @@ body {
   overflow: hidden;
 }
 /* Titulo descritivo dentro do detalhe. */
-.titulo-det { font-size: 1rem; color: var(--suave); margin: 0 0 16px; line-height: 1.45; }
+.titulo-det { font-size: 1rem; color: var(--suave); margin: 0 0 10px; line-height: 1.45; }
+/* Resumo (descricao lida da materia) dentro do detalhe. */
+.resumo-det {
+  font-size: 0.92rem; color: var(--texto); margin: 0 0 16px; line-height: 1.55;
+  background: var(--card); border: 1px solid var(--borda);
+  border-radius: 12px; padding: 12px 14px;
+}
 
 .estado {
   text-align: center; color: var(--suave);

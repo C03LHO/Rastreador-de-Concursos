@@ -80,3 +80,69 @@ def test_para_linha_db_monta_blob_sem_acento():
 def test_slug_para_busca_de_provas():
     assert collector._slug("Agente Administrativo") == "agente-administrativo"
     assert collector._slug("Tecnico de Enfermagem") == "tecnico-de-enfermagem"
+
+
+def test_foco_regional_norte_nordeste_e_go():
+    # Norte/Nordeste/GO e nacionais entram; outros estados ficam de fora.
+    assert collector._no_foco("pa") is True   # Norte
+    assert collector._no_foco("ce") is True   # Nordeste
+    assert collector._no_foco("go") is True   # extra pedido
+    assert collector._no_foco("br") is True   # nacional/federal
+    assert collector._no_foco("sp") is False  # fora do foco
+    assert collector._no_foco("rs") is False
+
+
+def test_extrair_salario_faixa_ate_e_unico():
+    assert collector._extrair_salario(
+        "Salario de R$ 1.500,00 a R$ 8.000,00.") == "R$ 1.500,00 a R$ 8.000,00"
+    assert collector._extrair_salario(
+        "Remuneracao de ate R$ 5.000,00.") == "ate R$ 5.000,00"
+    assert collector._extrair_salario(
+        "Vencimento de R$ 3.200,00 mensais.") == "R$ 3.200,00"
+    assert collector._extrair_salario("Sem valor informado aqui.") == ""
+
+
+def test_extrair_detalhes_rico():
+    corpo = ("A Prefeitura abre concurso com 50 vagas e cadastro de reserva. "
+             "Exige nivel medio e superior. Salarios de R$ 1.500,00 a R$ 8.000,00. "
+             "Taxa de inscricao de R$ 80,00. Prova em 15 de agosto de 2026. "
+             "Vaga para Analista de Sistemas. Jornada de 40 horas semanais. "
+             "Organizadora: FADESP.")
+    d = collector._extrair_detalhes(corpo)
+    assert d["vagas"] == "50"
+    assert d["cadastro_reserva"] == "sim"
+    assert d["salario"] == "R$ 1.500,00 a R$ 8.000,00"
+    assert d["taxa"] == "R$ 80,00"
+    assert d["jornada"] == "40h semanais"
+    assert d["banca"] == "FADESP"
+    assert "Analista De Sistemas" in d["cargos_ti"]
+    assert "Superior" in d["escolaridade"]
+
+
+def test_extrair_resumo_pega_abertura():
+    paragrafos = [
+        "Compartilhe:",  # ruido curto, ignorado
+        ("A Prefeitura de Belem divulgou edital de concurso publico com 100 "
+         "vagas para diversos cargos, com inscricoes abertas em junho."),
+    ]
+    resumo = collector._extrair_resumo(paragrafos)
+    assert resumo.startswith("A Prefeitura de Belem")
+
+
+def test_cargos_ti_vazio_quando_nao_ha():
+    corpo = "Concurso para Professor e Merendeira, nivel medio."
+    d = collector._extrair_detalhes(corpo)
+    assert "cargos_ti" not in d
+
+
+def test_extrair_resumo_ignora_menu_do_site():
+    # O menu/rodape do site ("Buscar no site... concursos abertos...") nao pode
+    # virar resumo; deve ser pulado e o paragrafo real escolhido.
+    paragrafos = [
+        ("Concursos no Brasil concursos abertos concursos previstos novos "
+         "questoes Buscar no site Buscar NACIONAL AC AL AM AP BA CE DF ES GO"),
+        ("A SESPA divulgou edital de concurso publico com 127 vagas para a "
+         "area da saude no Para, com inscricoes em junho de 2026."),
+    ]
+    resumo = collector._extrair_resumo(paragrafos)
+    assert resumo.startswith("A SESPA divulgou")

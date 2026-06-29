@@ -34,12 +34,28 @@ _LOCK_COLETA = threading.Lock()
 HTTP_TENTATIVAS = int(os.environ.get("HTTP_TENTATIVAS", "3"))
 HTTP_BACKOFF = float(os.environ.get("HTTP_BACKOFF", "1.0"))
 
-# Os 27 UFs do Brasil (26 estados mais o Distrito Federal).
-UFS = [
-    "ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms",
-    "mg", "pa", "pb", "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", "sc",
-    "sp", "se", "to",
-]
+# Foco regional (uso pessoal): regiao Norte + Nordeste + Goias. Em vez de
+# varrer os 27 estados, coletamos so estes, deixando a base enxuta e a coleta
+# diaria mais rapida no mini-servidor. Configuravel por ambiente (UFS_FOCO,
+# separados por virgula). Concursos federais/nacionais continuam entrando
+# sempre (uf "br"), pois sao muito relevantes para a area de TI.
+REGIAO_NORTE = ["ac", "ap", "am", "pa", "ro", "rr", "to"]
+REGIAO_NORDESTE = ["al", "ba", "ce", "ma", "pb", "pe", "pi", "rn", "se"]
+EXTRAS_FOCO = ["go"]
+
+_ufs_env = os.environ.get("UFS_FOCO", "")
+if _ufs_env.strip():
+    UFS = [u.strip().lower() for u in _ufs_env.split(",") if u.strip()]
+else:
+    UFS = REGIAO_NORTE + REGIAO_NORDESTE + EXTRAS_FOCO
+
+# Conjunto para checagem rapida. "br" = concursos nacionais/federais (sempre ok).
+_FOCO = set(UFS) | {"br"}
+
+
+def _no_foco(uf):
+    # Verdadeiro se a UF faz parte do foco (ou e nacional/federal).
+    return (uf or "br").lower() in _FOCO
 
 BASE_URL = "https://concursosnobrasil.com"
 
@@ -260,6 +276,11 @@ def _coletar_abertos(client, url, uf_padrao, novos_out=None):
         item = parse_linha(row, uf_padrao, "aberto")
         if not item:
             continue
+        # So guarda o que esta no foco (Norte/Nordeste/GO) ou e nacional. Nas
+        # paginas por estado a uf ja esta no foco; isso filtra o que "vaza" da
+        # pagina nacional para estados fora do foco.
+        if not _no_foco(item["uf"]):
+            continue
         total += 1
         if db.upsert_concurso(_para_linha_db(item)):
             novos += 1
@@ -294,7 +315,8 @@ def coletar_previstos(client, novos_out=None):
     itens = []
     for row in _RE_LINHA.findall(html):
         item = parse_linha(row, "br", "previsto")
-        if item:
+        # So guarda previstos do foco (Norte/Nordeste/GO) ou nacionais.
+        if item and _no_foco(item["uf"]):
             itens.append(item)
 
     # Ordena pelos mais recentes (data no link) e limita a quantidade.
@@ -530,55 +552,165 @@ _BANCAS = [
     "Selecon", "Legalle", "FAURGS", "Itame", "Fafipa", "Gualimp",
     "Avança SP", "Instituto Access", "Instituto Mais", "FUNRIO", "FEPESE",
     "Konsentec", "CONSESP", "UNOESC", "Unifil", "Aroeira", "IBAM", "IDIB",
+    # Bancas comuns no Norte e Nordeste (foco do usuario).
+    "Cesgranrio", "FADESP", "CETAP", "COPESE", "IMPARH", "Instituto Avalia",
+    "Verbena", "IBGP", "FUNCAB", "Sousandrade", "FUNDATEC", "INSTITUTO AOCP",
+    "FUNCERN", "IDECAN", "Crescer", "Dédalus",
 ]
 
 
+def _paragrafos(html):
+    # Lista os paragrafos <p> da pagina, ja em texto limpo. A materia em si fica
+    # em <p>; a caixa "Leia tambem" usa listas de links, entao isso pega o
+    # conteudo real e descarta o ruido dos concursos relacionados.
+    saida = []
+    for p in re.findall(r"<p[^>]*>(.*?)</p>", html, re.S):
+        texto = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", p)).strip()
+        if texto:
+            saida.append(texto)
+    return saida
+
+
 def _corpo_artigo(html):
-    # Junta o texto dos paragrafos <p> da pagina. A materia em si fica em <p>,
-    # enquanto a caixa "Leia tambem" usa listas de links (<a>), entao isso
-    # extrai o conteudo real e descarta o ruido dos concursos relacionados.
-    paragrafos = re.findall(r"<p[^>]*>(.*?)</p>", html, re.S)
-    texto = " ".join(re.sub(r"<[^>]+>", " ", p) for p in paragrafos)
-    return re.sub(r"\s+", " ", texto).strip()
+    # Junta o texto de todos os paragrafos (usado nas extracoes por regex).
+    return " ".join(_paragrafos(html)).strip()
+
+
+# Trechos de navegacao/rodape do site que NAO sao a materia (a pagina poe
+# parte do menu em <p>). Se um paragrafo contiver isso, nao e o resumo.
+_RUIDO_RESUMO = (
+    "buscar no site", "concursos previstos", "concursos abertos", "newsletter",
+    "acesso a informacao", "fale conosco", "compartilhe", "leia tambem",
+    "deixe um comentario", "todos os direitos",
+)
+
+
+def _extrair_resumo(paragrafos, limite=420):
+    # Escolhe o primeiro paragrafo "de verdade" (a abertura da materia) como
+    # descricao curta do concurso, cortando numa frase perto do limite. E o que
+    # da corpo ao detalhe -- antes esse campo ficava sempre vazio.
+    for p in paragrafos:
+        if len(p) < 100 or "." not in p:  # prosa real costuma ter ponto final
+            continue
+        baixo = db.remover_acentos(p.lower())
+        if any(r in baixo for r in _RUIDO_RESUMO):  # pula menu/rodape do site
+            continue
+        if re.search(r"concurso|edital|inscri|vagas|sele[çc]", p, re.I):
+            if len(p) > limite:
+                corte = p.rfind(". ", 0, limite)
+                p = (p[:corte + 1] if corte > 100 else p[:limite].rstrip() + "...")
+            return p
+    return ""
+
+
+# Cargos de TI a destacar quando aparecem no texto do concurso (foco do uso).
+_CARGOS_TI = [
+    "analista de sistemas", "analista de ti",
+    "analista de tecnologia da informacao", "analista de tecnologia",
+    "analista de suporte", "analista de infraestrutura", "analista de redes",
+    "analista de banco de dados", "analista de dados",
+    "analista de seguranca da informacao", "analista de desenvolvimento",
+    "tecnico em informatica", "tecnico de informatica", "tecnico em ti",
+    "tecnico em redes", "desenvolvedor", "programador",
+    "engenheiro de software", "administrador de redes",
+    "administrador de banco de dados", "cientista de dados",
+    "tecnologo em ti", "tecnologo em sistemas", "suporte tecnico",
+    "operador de computador", "webdesigner", "analista de bi",
+]
+
+
+def _limpa_dinheiro(texto):
+    # Normaliza um valor em reais ("R$ 1.234,56").
+    return re.sub(r"\s+", " ", texto).strip().rstrip(".,")
+
+
+def _extrair_salario(corpo):
+    # Salario, em ordem de preferencia: faixa, "ate R$ X" ou um valor unico.
+    m = re.search(
+        r"(?:sal[áa]rio|remunera\w+|vencimento)[^.]{0,40}?"
+        r"(R\$\s*[\d.,]+)\s*(?:a|at[ée]|e)\s*(R\$\s*[\d.,]+)",
+        corpo, re.I,
+    )
+    if m:
+        return f"{_limpa_dinheiro(m.group(1))} a {_limpa_dinheiro(m.group(2))}"
+    m = re.search(
+        r"(?:sal[áa]rio|remunera\w+|vencimento)[^.]{0,30}?"
+        r"at[ée]\s*(R\$\s*[\d.,]+(?:\s*mil)?)",
+        corpo, re.I,
+    )
+    if m:
+        return "ate " + _limpa_dinheiro(m.group(1))
+    m = re.search(
+        r"(?:sal[áa]rio|remunera\w+|vencimento)[^.]{0,40}?"
+        r"(R\$\s*[\d.,]+(?:\s*mil)?)",
+        corpo, re.I,
+    )
+    if m:
+        return _limpa_dinheiro(m.group(1))
+    return ""
 
 
 def _extrair_detalhes(corpo):
-    # Extrai informacoes extras do corpo do artigo: banca, escolaridade,
-    # salario, taxa de inscricao e data da prova. Tudo best-effort.
+    # Extrai informacoes ricas do texto (corpo do artigo OU texto do PDF):
+    # banca, escolaridade, salario, taxa, vagas, cadastro de reserva, data da
+    # prova, jornada e os cargos de TI mencionados. Tudo best-effort.
     d = {}
+    base = db.remover_acentos(corpo)  # versao sem acento p/ casar os cargos
 
+    # Banca organizadora.
     for banca in _BANCAS:
         if re.search(r"\b" + re.escape(banca) + r"\b", corpo, re.I):
             d["banca"] = banca
             break
 
+    # Escolaridade exigida (pode haver mais de um nivel).
     niveis = []
-    for rotulo, padrao in (("fundamental", "fundamental"), ("medio", r"m[ée]dio"),
-                           ("tecnico", r"t[ée]cnico"), ("superior", "superior")):
-        if re.search(r"(?:n[íi]vel|ensino|escolaridade)[^.]{0,30}" + padrao, corpo, re.I):
+    for rotulo, padrao in (("Fundamental", "fundamental"), ("Medio", r"m[ée]dio"),
+                           ("Tecnico", r"t[ée]cnico"), ("Superior", "superior")):
+        if (re.search(r"(?:n[íi]vel|ensino|escolaridade|forma[çc][ãa]o)[^.]{0,40}" + padrao, corpo, re.I)
+                or re.search(r"\b(?:ensino|n[íi]vel)\s+" + padrao, corpo, re.I)):
             niveis.append(rotulo)
     if niveis:
         d["escolaridade"] = ", ".join(dict.fromkeys(niveis))
 
-    m = re.search(
-        r"(?:sal[áa]rio|remunera\w+|vencimento).{0,40}?(R\$\s*[\d.,]+(?:\s*mil)?)",
-        corpo, re.I,
-    )
-    if m:
-        d["salario"] = re.sub(r"\s+", " ", m.group(1)).strip().rstrip(".,")
+    # Salario (faixa, "ate" ou valor unico).
+    salario = _extrair_salario(corpo)
+    if salario:
+        d["salario"] = salario
 
-    m = re.search(r"taxa.{0,40}?(R\$\s*[\d.,]+)", corpo, re.I)
+    # Taxa de inscricao.
+    m = re.search(r"taxa[^.]{0,40}?(R\$\s*[\d.,]+)", corpo, re.I)
     if m:
-        d["taxa"] = re.sub(r"\s+", " ", m.group(1)).strip().rstrip(".,")
+        d["taxa"] = _limpa_dinheiro(m.group(1))
 
+    # Numero de vagas e cadastro de reserva.
+    mv = re.search(r"(\d[\d.]{0,6})\s+vagas?\b", corpo, re.I)
+    if mv:
+        d["vagas"] = mv.group(1).replace(".", "")
+    if re.search(r"cadastro\s+(?:de\s+)?reserva", corpo, re.I):
+        d["cadastro_reserva"] = "sim"
+
+    # Data da prova (por extenso ou no formato DD/MM/AAAA).
     m = re.search(
-        r"(?:prova|aplica\w+)[^.]{0,40}?(\d{1,2}\s+de\s+"
+        r"(?:prova|aplica\w+)[^.]{0,50}?(\d{1,2}\s+de\s+"
         r"(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|"
         r"setembro|outubro|novembro|dezembro)(?:\s+de\s+\d{4})?)",
         corpo, re.I,
     )
+    if not m:
+        m = re.search(r"(?:prova|aplica\w+)[^.]{0,50}?(\d{2}/\d{2}/\d{4})", corpo, re.I)
     if m:
         d["data_prova"] = re.sub(r"\s+", " ", m.group(1)).strip()
+
+    # Jornada / carga horaria semanal.
+    mj = re.search(r"(\d{1,2})\s*horas?\s*(?:semanais|/\s*semana|por\s+semana)", corpo, re.I)
+    if mj:
+        d["jornada"] = f"{mj.group(1)}h semanais"
+
+    # Cargos de TI mencionados (destaque para o foco do usuario).
+    cargos = [c for c in _CARGOS_TI if re.search(r"\b" + re.escape(c) + r"\b", base, re.I)]
+    if cargos:
+        d["cargos_ti"] = ", ".join(dict.fromkeys(c.title() for c in cargos))
 
     return d
 
@@ -600,7 +732,10 @@ def enriquecer_um(client, concurso):
         return False
 
     texto = _texto_visivel(html)
-    corpo = _corpo_artigo(html)
+    paragrafos = _paragrafos(html)
+    corpo = " ".join(paragrafos).strip()
+    # Descricao curta do concurso (abertura da materia).
+    dados["resumo"] = _extrair_resumo(paragrafos)
     # Prefere as datas do corpo da materia; se nao achar, tenta no texto todo.
     di, dfim = _extrair_periodo(corpo)
     if not dfim:
@@ -608,9 +743,14 @@ def enriquecer_um(client, concurso):
     dados["data_inicio"], dados["data_fim"] = di, dfim
     dados["link_oficial"] = _achar_link_oficial(html)
 
-    # Informacoes extras (banca, escolaridade, salario, taxa, data da prova).
+    # Informacoes extras (banca, escolaridade, salario, taxa, vagas, cargos...).
     detalhes = _extrair_detalhes(corpo)
-    partes_blob = [_folder_blob(" ".join(detalhes.values()))] if detalhes else []
+    # O resumo e os detalhes tambem entram no blob de busca.
+    partes_blob = []
+    if dados["resumo"]:
+        partes_blob.append(_folder_blob(dados["resumo"]))
+    if detalhes:
+        partes_blob.append(_folder_blob(" ".join(detalhes.values())))
 
     if LER_PDF and dados["link_oficial"]:
         pdf = _achar_pdf(client, dados["link_oficial"])
@@ -934,6 +1074,9 @@ def coletar_pci(client, novos_out=None):
     for bloco in html.split('<div class="ca">')[1:]:
         item = _parse_pci(bloco)
         if not item:
+            continue
+        # So guarda concursos do foco (Norte/Nordeste/GO) ou nacionais.
+        if not _no_foco(item["uf"]):
             continue
         total += 1
         norm = _para_linha_db(item, fonte="PCI Concursos")

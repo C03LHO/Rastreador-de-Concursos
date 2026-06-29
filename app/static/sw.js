@@ -7,7 +7,7 @@
 //   a mesma ideia do app: sempre mostrar o ultimo estado bom.
 // - /api/status e /api/coletar nunca usam cache (sao sempre ao vivo).
 
-const VERSAO = "concursos-v3";
+const VERSAO = "concursos-v4";
 const SHELL = [
   "/",
   "/static/app.css",
