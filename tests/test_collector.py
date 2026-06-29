@@ -12,6 +12,22 @@ def test_chave_normaliza_orgao_e_inclui_data():
     assert chave == "prefeitura maraba|pa|2026-07-10"
 
 
+def test_limpa_decodifica_entidades_html():
+    # Entidades numericas e nomeadas devem virar os caracteres reais, senao o
+    # titulo aparece "bugado" (ex: d&#039;Agua) na tela.
+    assert collector._limpa("Pref. de M&#227;e d&#039;&#193;gua") == "Pref. de Mãe d'Água"
+    assert collector._limpa("Sa&uacute;de &amp; Educa&ccedil;&atilde;o") == "Saúde & Educação"
+
+
+def test_entidades_geram_mesma_chave_entre_fontes():
+    # Regressao do bug de duplicacao: uma fonte traz "&#039;" e a outra "'".
+    # Apos decodificar, a chave de dedup tem de ser identica.
+    cnb = collector._limpa("C&#226;mara de M&#227;e d&#039;&#193;gua")
+    pci = "Câmara de Mãe d'Água - PB"
+    assert (collector._chave(cnb, "pb", "2026-06-28")
+            == collector._chave(pci, "pb", "2026-06-28"))
+
+
 def test_chave_vazia_sem_data_fim():
     # Sem data de encerramento, a chave fica vazia (nao funde com ninguem).
     assert collector._chave("Prefeitura de Maraba", "pa", "") == ""

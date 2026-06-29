@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("DB_PATH", "concursos.db")
 
 # Marca do modelo de dados / fonte atual. Se mudar, os dados antigos (por
 # exemplo, os da API anterior, que nao tinham link) sao limpos no boot.
-VERSAO_FONTE = "concursosnobrasil-v5-foco-norte-nordeste-go"
+VERSAO_FONTE = "concursosnobrasil-v6-entidades-html"
 
 
 def remover_acentos(texto):

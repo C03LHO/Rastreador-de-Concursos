@@ -17,6 +17,7 @@ import re
 import threading
 import time
 from datetime import datetime
+from html import unescape as _unescape  # decodifica &#039; &amp; &aacute; etc.
 from io import BytesIO
 from urllib.parse import urljoin
 
@@ -105,8 +106,11 @@ _RE_DATA = re.compile(r"/(20\d\d)/(\d\d)/(\d\d)/")
 
 
 def _limpa(texto):
-    # Remove tags HTML e normaliza os espacos.
+    # Remove tags HTML, decodifica entidades (&#039; -> ', &amp; -> & etc.) e
+    # normaliza os espacos. A decodificacao e essencial: sem ela o titulo sai
+    # "bugado" (d&#039;Agua) e a chave de dedup nao casa entre as fontes.
     texto = re.sub(r"<[^>]+>", " ", texto)
+    texto = _unescape(texto)
     return re.sub(r"\s+", " ", texto).strip()
 
 
@@ -409,7 +413,7 @@ def _coletar_tudo():
 def _texto_visivel(html):
     # Remove scripts/estilos e tags, devolvendo o texto corrido da pagina.
     html = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S)
-    texto = re.sub(r"<[^>]+>", " ", html)
+    texto = _unescape(re.sub(r"<[^>]+>", " ", html))
     return re.sub(r"\s+", " ", texto)
 
 
@@ -630,7 +634,7 @@ def _paragrafos(html):
     # conteudo real e descarta o ruido dos concursos relacionados.
     saida = []
     for p in re.findall(r"<p[^>]*>(.*?)</p>", html, re.S):
-        texto = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", p)).strip()
+        texto = re.sub(r"\s+", " ", _unescape(re.sub(r"<[^>]+>", " ", p))).strip()
         if texto:
             saida.append(texto)
     return saida
@@ -1101,12 +1105,12 @@ def _parse_pci(bloco):
     link = a.group(1)
     if "pciconcursos" not in link:
         return None
-    titulo = re.sub(r"\s+", " ", a.group(2)).strip()
-    orgao = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", a.group(3))).strip()
+    titulo = re.sub(r"\s+", " ", _unescape(a.group(2))).strip()
+    orgao = re.sub(r"\s+", " ", _unescape(re.sub(r"<[^>]+>", " ", a.group(3)))).strip()
     if not orgao:
         return None
 
-    texto = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", bloco)).strip()
+    texto = re.sub(r"\s+", " ", _unescape(re.sub(r"<[^>]+>", " ", bloco))).strip()
 
     mv = re.search(r"(\d[\d.]*)\s+vagas?", texto)
     vagas = (mv.group(1) + " vagas") if mv else ""
