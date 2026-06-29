@@ -15,10 +15,23 @@ services:
       - HORA_LEITURA=4
       # Leitura automatica do PDF do edital (1 liga, 0 desliga).
       - LER_PDF=1
+      # Quantos concursos ler por lote no enriquecimento.
+      - LOTE_DETALHES=20
+      # Hora (0-23) do lembrete diario de prazo dos favoritos.
+      - HORA_AVISO_PRAZO=8
+      # Avisar quando um favorito encerrar em ate N dias.
+      - PRAZO_AVISO_DIAS=3
     volumes:
       # Volume nomeado para o arquivo SQLite sobreviver a recriacao do container.
       - concursos_dados:/data
     restart: unless-stopped
+    healthcheck:
+      # Usa o proprio Python (sem depender de curl/wget na imagem slim).
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8723/api/health', timeout=5).getcode()==200 else sys.exit(1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   concursos_dados:

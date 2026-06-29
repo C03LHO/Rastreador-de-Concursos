@@ -149,11 +149,17 @@ def upsert_concurso(item):
 
         if existe:
             # Ja existe: atualiza os campos e a data de atualizacao.
+            # Importante: a chave de dedup so e preenchida no enriquecimento
+            # (quando a data_fim e conhecida). Na coleta da listagem ela vem
+            # vazia, entao NUNCA sobrescrevemos uma chave ja calculada com vazio
+            # -- senao a deduplicacao entre fontes quebraria a cada coleta
+            # horaria. COALESCE(NULLIF(...)) preserva a chave existente.
             conn.execute(
                 """
                 UPDATE concursos
                 SET uf = ?, orgao = ?, titulo = ?, situacao = ?, link = ?,
-                    vagas = ?, tipo = ?, data = ?, fonte = ?, chave = ?,
+                    vagas = ?, tipo = ?, data = ?, fonte = ?,
+                    chave = COALESCE(NULLIF(?, ''), chave),
                     blob = ?, raw_json = ?, atualizado_em = ?
                 WHERE hash = ?
                 """,

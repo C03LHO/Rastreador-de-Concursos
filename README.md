@@ -132,8 +132,10 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | --- | --- | --- |
 | `GET` | `/` | Serve a tela web (PWA). |
 | `GET` | `/api/concursos` | Lista os concursos com filtros opcionais. |
+| `GET` | `/api/concursos.csv` | Exporta os concursos filtrados em CSV (mesmos filtros). |
 | `GET` | `/api/areas` | Lista as áreas disponíveis. |
 | `GET` | `/api/status` | Total no banco, progresso da leitura de editais e última coleta. |
+| `GET` | `/api/health` | Verificação leve (usada pelo healthcheck do Docker). |
 | `GET` | `/api/provas?q=<cargo>` | Provas anteriores do PCI Concursos (aba Treinar). |
 | `GET` | `/api/perfil` | Lê o perfil de interesse salvo. |
 | `POST` | `/api/perfil` | Salva o perfil (estados, termos, áreas e ntfy). |
@@ -243,7 +245,7 @@ A coleta é **defensiva**: se a estrutura de uma página mudar, aquele item é i
 - [x] Segundo agregador de fontes (PCI) com deduplicação.
 - [x] Favoritar concursos e acompanhar prazos.
 - [ ] Mais agregadores (Estuda Grátis, Folha Dirigida, etc.).
-- [ ] Exportar resultados (CSV / JSON).
+- [x] Exportar resultados (CSV).
 
 ## 📄 Licença
 

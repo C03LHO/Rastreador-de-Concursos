@@ -5,6 +5,8 @@ depois roda de tempos em tempos. O intervalo vem da variavel de ambiente
 INTERVALO_HORAS e o fuso usado e America/Belem.
 """
 
+import csv
+import io
 import json
 import os
 import threading
@@ -13,7 +15,7 @@ from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import collector, db
@@ -143,10 +145,71 @@ def api_concursos(
     return {"total": len(concursos), "concursos": concursos}
 
 
+# Colunas exportadas no CSV, na ordem em que aparecem (chave no banco -> rotulo).
+_CSV_COLUNAS = [
+    ("orgao", "Orgao"),
+    ("titulo", "Titulo"),
+    ("uf", "UF"),
+    ("tipo", "Tipo"),
+    ("vagas", "Vagas"),
+    ("data_inicio", "Inscricao inicio"),
+    ("data_fim", "Inscricao fim"),
+    ("link", "Link"),
+    ("link_oficial", "Link oficial"),
+    ("pdf_url", "Edital PDF"),
+    ("fonte", "Fonte"),
+]
+
+
+@app.get("/api/concursos.csv")
+def api_concursos_csv(
+    uf: str = Query(default=None),
+    area: str = Query(default=None),
+    cidade: str = Query(default=None),
+    cargo: str = Query(default=None),
+    tipo: str = Query(default=None),
+    q: str = Query(default=None),
+    limite: int = Query(default=1000, description="Quantidade maxima de itens"),
+    encerrados: bool = Query(default=False),
+):
+    # Exporta os concursos filtrados em CSV (mesmos filtros de /api/concursos).
+    # Util para abrir no Excel/Sheets ou guardar uma copia.
+    area_palavras = AREAS.get(area.lower()) if area else None
+    concursos = db.buscar_concursos(
+        uf=uf, area_palavras=area_palavras, cidade=cidade, cargo=cargo,
+        tipo=tipo, q=q, limite=limite, incluir_encerrados=encerrados,
+    )
+
+    buffer = io.StringIO()
+    # utf-8-sig (BOM) faz o Excel abrir os acentos corretamente.
+    escritor = csv.writer(buffer, delimiter=";")
+    escritor.writerow([rotulo for _, rotulo in _CSV_COLUNAS])
+    for c in concursos:
+        escritor.writerow([c.get(chave, "") or "" for chave, _ in _CSV_COLUNAS])
+
+    conteudo = "﻿" + buffer.getvalue()
+    return Response(
+        content=conteudo,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="concursos.csv"'},
+    )
+
+
 @app.get("/api/areas")
 def api_areas():
     # Lista as areas disponiveis para o filtro.
     return {"areas": sorted(AREAS.keys())}
+
+
+@app.get("/api/health")
+def api_health():
+    # Verificacao leve para o healthcheck do Docker e monitoramento externo.
+    # So confirma que a app responde e que o banco esta acessivel.
+    try:
+        total = db.contar_total()
+        return {"status": "ok", "total": total}
+    except Exception as erro:
+        return {"status": "erro", "detalhe": str(erro)}
 
 
 @app.get("/api/status")

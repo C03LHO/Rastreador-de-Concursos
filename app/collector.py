@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 from datetime import datetime
 from io import BytesIO
@@ -22,6 +23,16 @@ from urllib.parse import urljoin
 import httpx
 
 from . import db
+
+# Trava global: garante que apenas UMA coleta/enriquecimento rode por vez.
+# Sem ela, a coleta do boot (que tambem le os editais, demorada) poderia
+# colidir com a coleta horaria do agendador, duplicando trabalho e gravacoes.
+_LOCK_COLETA = threading.Lock()
+
+# Quantas vezes tentar baixar uma pagina antes de desistir, e a espera inicial
+# entre as tentativas (dobrada a cada vez: backoff exponencial).
+HTTP_TENTATIVAS = int(os.environ.get("HTTP_TENTATIVAS", "3"))
+HTTP_BACKOFF = float(os.environ.get("HTTP_BACKOFF", "1.0"))
 
 # Os 27 UFs do Brasil (26 estados mais o Distrito Federal).
 UFS = [
@@ -208,10 +219,29 @@ def _para_linha_db(item, fonte="Concursos no Brasil"):
     }
 
 
+def _get_com_retry(client, url, tentativas=None, timeout=40, **kwargs):
+    # GET com retry e backoff exponencial. Levanta a ultima excecao se todas as
+    # tentativas falharem (quem chama decide se ignora). Uma falha de rede
+    # passageira deixa de derrubar a coleta daquela pagina.
+    tentativas = tentativas or HTTP_TENTATIVAS
+    espera = HTTP_BACKOFF
+    ultimo_erro = None
+    for i in range(tentativas):
+        try:
+            resp = client.get(url, timeout=timeout, follow_redirects=True, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except Exception as erro:
+            ultimo_erro = erro
+            if i < tentativas - 1:
+                time.sleep(espera)
+                espera *= 2
+    raise ultimo_erro
+
+
 def _baixar(client, url):
     # Baixa uma pagina e devolve o HTML decodificado em utf-8.
-    resp = client.get(url, timeout=40, follow_redirects=True)
-    resp.raise_for_status()
+    resp = _get_com_retry(client, url)
     return resp.content.decode("utf-8", "replace")
 
 
@@ -281,6 +311,18 @@ def coletar_previstos(client, novos_out=None):
 
 
 def coletar_tudo():
+    # Coleta a listagem, protegida pela trava: se ja houver uma coleta em
+    # andamento (boot ou outra rodada do agendador), pula esta sem bloquear.
+    if not _LOCK_COLETA.acquire(blocking=False):
+        print("[coleta] ja existe uma coleta em andamento; pulando esta rodada")
+        return {"itens": 0, "novos": 0, "quando": None, "pulado": True}
+    try:
+        return _coletar_tudo()
+    finally:
+        _LOCK_COLETA.release()
+
+
+def _coletar_tudo():
     # Percorre os 27 estados (abertos) e a pagina de previstos, gravando tudo.
     inicio = datetime.now().isoformat(timespec="seconds")
     print(f"[coleta] iniciando em {inicio}")
@@ -640,9 +682,17 @@ def enriquecer_tudo():
 
 def coletar_e_enriquecer():
     # Coleta a listagem e em seguida le todos os editais. Usado no boot e no
-    # agendamento diario das 4h.
-    coletar_tudo()
-    enriquecer_tudo()
+    # agendamento diario das 4h. Segura a trava durante TODO o processo (coleta
+    # + leitura pesada), entao a coleta horaria que cair no meio simplesmente
+    # pula em vez de competir pela escrita no banco.
+    if not _LOCK_COLETA.acquire(blocking=False):
+        print("[coleta] ja existe uma coleta em andamento; pulando leitura diaria")
+        return
+    try:
+        _coletar_tudo()
+        enriquecer_tudo()
+    finally:
+        _LOCK_COLETA.release()
 
 
 # ----------------------------------------------------------------------------
@@ -872,8 +922,8 @@ def coletar_pci(client, novos_out=None):
     # Os itens ja vem com prazo e escolaridade, entao gravamos o detalhe na hora
     # e marcamos como lidos (nao precisam do enriquecimento por pagina).
     try:
-        r = client.get(PCI_CONCURSOS_URL, headers={"User-Agent": PCI_UA},
-                       timeout=30, follow_redirects=True)
+        r = _get_com_retry(client, PCI_CONCURSOS_URL,
+                           headers={"User-Agent": PCI_UA}, timeout=30)
         html = r.content.decode("utf-8", "replace")
     except Exception as erro:
         print(f"[pci] falha: {erro}")
