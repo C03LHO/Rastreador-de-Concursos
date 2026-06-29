@@ -4,7 +4,7 @@
 
 **Uma base sempre atualizada de concursos públicos do Brasil, com API REST e um app web instalável (PWA).**
 
-Coleta os concursos de hora em hora, lê o edital automaticamente, mostra a data de encerramento das inscrições e funciona offline servindo o último estado bom salvo.
+Coleta os concursos de hora em hora, lê o edital automaticamente, mostra o prazo de inscrição, resume com IA (opcional) e funciona offline servindo o último estado bom salvo. Configurado com foco em **TI** nas regiões **Norte, Nordeste e Goiás**.
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -27,6 +27,7 @@ Coleta os concursos de hora em hora, lê o edital automaticamente, mostra a data
 - [Configuração](#-configuração)
 - [API REST](#-api-rest)
 - [Filtro por área](#-filtro-por-área)
+- [Resumo por IA](#-resumo-por-ia-opcional-e-gratuito)
 - [Estrutura do projeto](#-estrutura-do-projeto)
 - [Fonte de dados](#-fonte-de-dados)
 - [Roadmap](#-roadmap)
@@ -45,40 +46,43 @@ Procurar concurso é chato: a informação fica espalhada, alguns sites caem e n
 - 📅 **Data de encerramento das inscrições**, lida automaticamente da página e do PDF.
 - 🧠 **Informação rica por concurso**: banca, escolaridade, salário (faixa), vagas, jornada, data da prova e cargos de TI, extraídos automaticamente.
 - 📄 **Leitura automática do edital em PDF** (quando encontrado) e botão para baixar.
-- 🎯 **Foco em TI**: botão "Só TI" que mostra apenas vagas de tecnologia (fica lembrado), e **"o que cai"** — o conteúdo programático de TI extraído do edital.
+- 🎯 **Foco em TI**: filtre por **TI** nos chips de área e veja **"o que cai"** — o conteúdo programático de TI extraído do edital — além de um **plano de estudo consolidado** (o que mais se repete nos concursos de TI abertos).
+- 🤖 **Resumo por IA (opcional)**: com uma chave grátis da Groq, gera um resumo e um plano de estudo de TI por concurso, e responde **"perguntas sobre o edital"**. Sem chave, o app funciona normal (heurística).
 - 📅 **Calendário (.ics)**: adicione prazos de inscrição e datas de prova ao calendário do celular, por concurso ou de todos os favoritos.
-- 🔔 **Resumo diário (digest)**: um único push de manhã com os novos concursos de TI do dia.
+- 🔔 **Notificações no celular (ntfy)** + **resumo diário (digest)** dos novos concursos de TI.
 - 🎓 **Treinar com provas anteriores**: busca provas e gabaritos no PCI Concursos por cargo, com link para baixar. Cada concurso também tem um atalho de provas anteriores.
-- ⏳ **Prazo em primeiro lugar**: esconde inscrições já encerradas (com um toque para incluir) e mostra primeiro os concursos que encerram mais cedo, para você não perder nada.
-- ⭐ **Favoritar e acompanhar prazos**: salve concursos e veja-os ordenados pelo prazo de inscrição, com lembrete por push quando o prazo se aproxima.
+- ⏳ **Prazo em primeiro lugar**: esconde inscrições já encerradas (com um toque para incluir) e mostra primeiro os concursos que encerram mais cedo.
+- ⭐ **Favoritar, acompanhar prazos** e marcar **"já me inscrevi"** para organizar onde você já entrou.
 - 🗂️ **Mais de uma fonte**: agrega o **Concursos no Brasil** e o **PCI Concursos**, deduplicando automaticamente o mesmo concurso entre as fontes.
-- 🔔 **Perfil e notificações**: você escolhe estados, órgãos/cidades e áreas de interesse, e recebe um push no celular (via **ntfy**) quando surge um concurso novo do seu perfil.
-- 🌙 **Leitura diária às 4h**: a parte pesada (ler todos os editais) roda uma vez por dia de madrugada, configurável.
-- 🧭 **Foco na região do Pará**: atalhos rápidos para Belém, Marabá, Parauapebas, Canaã dos Carajás, Curionópolis e outras.
-- 🔎 **Busca inteligente**: insensível a acento e com filtro de área por palavra inteira.
+- 🔎 **Busca por várias palavras** (acha por todos os termos, em qualquer ordem) e **filtros** por estado, área, tipo e escolaridade.
+- 💾 **Backup automático** diário do banco (mantém as N cópias mais recentes), pensado para servidores em cartão SD (Raspberry Pi).
+- 🧭 **Foco regional** (Norte + Nordeste + Goiás) com atalhos para cidades do Pará.
 - 📱 **PWA instalável** no celular, com modo offline servindo os últimos dados.
-- 🐳 **Sobe com um comando** via Docker Compose, ideal para rodar no seu servidor (Umbrel, Portainer, etc.).
+- 🐳 **Sobe com um comando** via Docker Compose, ideal para Umbrel/Portainer.
 
 ## 🏗️ Como funciona
 
 ```mermaid
 flowchart LR
     A["Concursos no Brasil"] -->|"coleta horária"| B[Coletor]
-    A2["Detalhe + edital PDF"] -->|"leitura diária 4h"| D[Enriquecimento]
-    P["PCI Concursos"] -->|"sob demanda"| T["Treinar (provas)"]
+    P["PCI Concursos"] -->|"coleta horária"| B
+    B --> D["Enriquecimento<br/>(edital + PDF) 4h"]
+    D -->|"texto do edital"| I["IA (Groq)<br/>opcional"]
     B --> C[("SQLite<br/>volume Docker")]
     D --> C
+    I --> C
+    C -->|"backup diário"| K[("backups/")]
     C --> E["API FastAPI"]
     E --> F["PWA / Tela web"]
     E --> N["ntfy (push)"]
-    T --> E
 ```
 
-1. O **coletor** varre os estados do **foco** (regiões Norte e Nordeste + Goiás), os concursos **nacionais/federais** e os previstos (de hora em hora). O foco é configurável pela variável `UFS_FOCO`.
-2. O **enriquecimento** (uma vez por dia, às 4h) abre a página de cada concurso, extrai datas, banca, escolaridade, salário e taxa, e tenta ler o PDF do edital.
-3. Tudo é gravado no **SQLite**, com deduplicação pelo link.
-4. Quando surge um concurso novo do seu **perfil**, o app envia um push via **ntfy**.
-5. A aba **Treinar** busca provas anteriores no **PCI Concursos** sob demanda.
+1. O **coletor** varre os estados do **foco** (regiões Norte e Nordeste + Goiás), os concursos **nacionais/federais** e os previstos, nas duas fontes (de hora em hora). O foco é configurável pela variável `UFS_FOCO`.
+2. O **enriquecimento** (uma vez por dia, às 4h, e no boot) abre a página de cada concurso, extrai datas, banca, escolaridade, salário, vagas e cargos de TI, e tenta **ler o PDF do edital**.
+3. Tudo é gravado no **SQLite**, deduplicando o mesmo concurso entre as fontes por uma chave (órgão + UF + prazo).
+4. Se houver uma **chave de IA** configurada, a leitura diária também gera um resumo e um plano de estudo de TI por concurso.
+5. Quando surge um concurso novo do seu **perfil**, o app envia um push via **ntfy** (e um **resumo diário** dos novos de TI).
+6. Um **backup diário** do banco é guardado em `backups/`, mantendo só as cópias mais recentes.
 
 ## 🖼️ Telas
 
@@ -86,7 +90,7 @@ flowchart LR
 
 <!-- ![Tela do app](docs/tela.png) -->
 
-A tela tem uma barra de busca única, chips de área, seletor de estado, atalhos da região do Pará e cards com órgão, descrição, vagas e prazo de inscrição. Tocar em um card abre os detalhes com o período de inscrição e os botões **Abrir página do concurso**, **Baixar edital (PDF)** e **Site oficial / inscrição**.
+A tela tem uma barra de busca única, chips de área, seletores de estado e escolaridade, atalhos da região do Pará e cards com órgão, descrição, vagas, salário e prazo de inscrição. Tocar em um card abre os detalhes com o período de inscrição, o resumo (e, com IA, o plano de estudo), e os botões **Site oficial / inscrição**, **Baixar edital (PDF)**, **Ver matéria**, **Adicionar ao calendário** e **Pergunte ao edital**.
 
 ## 🚀 Como rodar
 
@@ -106,6 +110,26 @@ Depois acesse:
 > No celular, na mesma rede, use `http://SEU_IP_LOCAL:8723` e toque em **Instalar o app** (ou **Adicionar à tela inicial**).
 
 A primeira coleta começa em segundo plano assim que o app sobe, então os primeiros resultados aparecem em alguns segundos. As datas e os editais vão sendo preenchidos aos poucos (o app mostra o progresso "lendo editais X/Y").
+
+### Rodar no Umbrel (via Portainer)
+
+No Umbrel, instale o app **Portainer** e crie uma *stack* a partir deste repositório:
+
+1. **Portainer → Stacks → Add stack**.
+2. **Build method: Repository**. Em *Repository URL*, use
+   `https://github.com/C03LHO/Rastreador-de-Concursos` e *Compose path*
+   `docker-compose.yml`.
+3. **Deploy the stack**. O Portainer clona o repo e constrói a imagem (o
+   `docker-compose.yml` usa `build: .`).
+4. Acesse `http://IP-DO-UMBREL:8723` no celular e toque em **Instalar o app**.
+
+Para **atualizar** depois, é só **Pull and redeploy** na stack do Portainer (ou
+`git pull && docker compose up --build -d` por terminal). O banco fica num
+**volume** (`concursos_dados`), então sobrevive às atualizações; os backups
+diários ficam em `backups/` dentro do mesmo volume.
+
+> A configuração de notificações (ntfy) e da IA (chave Groq) é feita **dentro
+> do app**, na tela **Perfil** — sem mexer em terminal.
 
 ### Rodar sem Docker (opcional)
 
@@ -130,6 +154,8 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `HORA_AVISO_PRAZO` | `8` | Hora do lembrete diário de prazo dos favoritos. |
 | `PRAZO_AVISO_DIAS` | `3` | Avisar quando um favorito encerrar em até N dias. |
 | `HORA_DIGEST` | `7` | Hora do resumo diário (digest) dos novos concursos de TI. |
+| `HORA_BACKUP` | `3` | Hora do backup diário do banco. |
+| `MAX_BACKUPS` | `15` | Quantas cópias de backup manter (as mais antigas são apagadas). |
 | `IA_MODELO` | `llama-3.1-8b-instant` | Modelo usado no resumo por IA (opcional; configure a chave no app). |
 | `IA_MAX_POR_RODADA` | `60` | Quantos concursos de TI resumir por rodada de IA (respeita o limite grátis). |
 
@@ -193,6 +219,9 @@ Para ativar:
    e um **tópico** único e secreto (ex: `meus-concursos-9f3a`).
 3. Assine esse mesmo tópico no app ntfy. Use "Enviar teste" para confirmar.
 
+Você recebe: concursos novos do seu perfil, lembrete quando um **favorito** está
+perto de encerrar e um **resumo diário** (digest) dos novos concursos de TI.
+
 ## ⭐ Favoritos e prazos
 
 Toque na **estrela** de qualquer concurso para salvá-lo. Na tela **Favoritos**
@@ -214,10 +243,11 @@ Por padrão o app extrai as informações por heurística (leve, roda em qualque
 lugar). Se quiser um **resumo em linguagem natural** e um **plano de estudo de
 TI** por concurso, cole uma chave **gratuita** da [Groq](https://console.groq.com/keys)
 em **Perfil → Inteligência (IA)** e toque em **Testar IA**. A partir daí, a
-leitura diária gera o resumo dos concursos de TI (usando o texto do edital já
-lido, sem custo de processamento no servidor). **Sem chave, nada muda.** É
-compatível com qualquer endpoint no formato OpenAI (Groq, etc.), configurável
-por `IA_MODELO`/`IA_KEY`.
+leitura diária gera o resumo e o **plano de estudo de TI** dos concursos (usando
+o texto do edital já lido, sem peso de processamento no servidor), e você pode
+usar o **"Pergunte ao edital"** no detalhe de cada concurso. **Sem chave, nada
+muda** (o app usa a extração por heurística). É compatível com qualquer endpoint
+no formato OpenAI (Groq, etc.), configurável por `IA_MODELO`/`IA_KEY`.
 
 ## 🗂️ Estrutura do projeto
 
@@ -264,14 +294,20 @@ A coleta é **defensiva**: se a estrutura de uma página mudar, aquele item é i
 
 ## 🧭 Roadmap
 
-- [x] Data de encerramento, banca, salário e escolaridade por concurso.
+- [x] Data de encerramento, banca, salário, vagas e escolaridade por concurso.
 - [x] Leitura automática do edital em PDF.
-- [x] Perfil de interesse com notificação por ntfy.
+- [x] Perfil de interesse com notificação por ntfy + resumo diário (digest).
 - [x] Treinar com provas anteriores (PCI Concursos).
 - [x] Segundo agregador de fontes (PCI) com deduplicação.
-- [x] Favoritar concursos e acompanhar prazos.
+- [x] Favoritar concursos, acompanhar prazos e marcar "já me inscrevi".
+- [x] Exportar resultados (CSV) e calendário (.ics).
+- [x] Foco regional (Norte/Nordeste/GO) e foco em TI com "o que cai".
+- [x] Resumo por IA (Groq) + plano de estudo + "pergunte ao edital".
+- [x] Backup automático do banco com rotação.
+- [x] Busca por várias palavras e filtro por escolaridade.
+- [ ] Quadro de cargos por edital (vagas/salário/requisitos por cargo).
+- [ ] Detecção de edital retificado.
 - [ ] Mais agregadores (Estuda Grátis, Folha Dirigida, etc.).
-- [x] Exportar resultados (CSV).
 
 ## 📄 Licença
 
