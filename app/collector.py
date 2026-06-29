@@ -702,6 +702,43 @@ _CARGOS_TI = [
     "operador de computador", "webdesigner", "analista de bi",
 ]
 
+# "O que cai" em TI: topicos de conteudo programatico -> pistas no texto do
+# edital (sem acento, minusculas; alguns com espaco em volta p/ evitar engano).
+# E a nossa "inteligencia" gratis: diz o que estudar para aquele concurso.
+_CONTEUDO_TI = {
+    "Redes de Computadores": ("redes de computadores", "tcp/ip", "tcp ip",
+                              "roteamento", "vlan", " lan ", " wan ", "protocolo"),
+    "Banco de Dados": ("banco de dados", " sql", "mysql", "postgresql", "oracle",
+                       "modelagem de dados", "normalizacao", "modelo relacional"),
+    "Seguranca da Informacao": ("seguranca da informacao", "criptografia",
+                                "firewall", "lgpd", "iso 27001", "vulnerabilidade",
+                                "ciberseguranca"),
+    "Programacao e Desenvolvimento": ("programacao", "orientacao a objetos",
+                                      "algoritmos", " java", "python", "javascript",
+                                      " php", "logica de programacao"),
+    "Engenharia de Software": ("engenharia de software", " uml", "requisitos",
+                               "scrum", "metodologia agil", "teste de software",
+                               "ciclo de vida"),
+    "Sistemas Operacionais": ("sistemas operacionais", " linux", "windows server",
+                              "gerencia de processos", "gerenciamento de memoria"),
+    "Estrutura de Dados": ("estrutura de dados", "estruturas de dados", "arvores",
+                           "listas encadeadas", "grafos", "pilhas e filas"),
+    "Governanca de TI": (" itil", " cobit", "governanca de ti",
+                         "gestao de projetos", "pmbok", "gestao de servicos"),
+    "Cloud e Infraestrutura": (" cloud", "computacao em nuvem", "virtualizacao",
+                               " aws", " azure", "datacenter", "data center",
+                               "infraestrutura de ti"),
+    "Dados e BI": ("business intelligence", " etl", "data warehouse", "big data",
+                   "ciencia de dados", "mineracao de dados"),
+}
+
+
+def _extrair_conteudo_ti(texto):
+    # Lista os topicos de TI mencionados no edital ("o que estudar").
+    low = (texto or "").lower()
+    return [rotulo for rotulo, pistas in _CONTEUDO_TI.items()
+            if any(p in low for p in pistas)]
+
 
 def _limpa_dinheiro(texto):
     # Normaliza um valor em reais ("R$ 1.234,56").
@@ -795,6 +832,10 @@ def _extrair_detalhes(corpo):
     cargos = [c for c in _CARGOS_TI if re.search(r"\b" + re.escape(c) + r"\b", base, re.I)]
     if cargos:
         d["cargos_ti"] = ", ".join(dict.fromkeys(c.title() for c in cargos))
+        # So faz sentido sugerir "o que estudar" quando ha vaga de TI.
+        topicos = _extrair_conteudo_ti(base)
+        if topicos:
+            d["conteudo_ti"] = ", ".join(topicos)
 
     return d
 

@@ -157,6 +157,32 @@ def test_cargos_ti_vazio_quando_nao_ha():
     assert "cargos_ti" not in d
 
 
+def test_conteudo_ti_o_que_cai():
+    texto = ("Conteudo: Redes de Computadores, Banco de Dados (SQL), "
+             "Seguranca da Informacao e Engenharia de Software.")
+    topicos = collector._extrair_conteudo_ti(texto.lower())
+    assert "Redes de Computadores" in topicos
+    assert "Banco de Dados" in topicos
+    assert "Seguranca da Informacao" in topicos
+    assert "Engenharia de Software" in topicos
+
+
+def test_detalhes_inclui_conteudo_ti_quando_ha_vaga_ti():
+    corpo = ("Concurso com vaga para Analista de Sistemas. Conteudo programatico: "
+             "Banco de Dados, Redes de Computadores e Governanca de TI (ITIL).")
+    d = collector._extrair_detalhes(corpo)
+    assert "cargos_ti" in d
+    assert "conteudo_ti" in d
+    assert "Banco de Dados" in d["conteudo_ti"]
+
+
+def test_sem_conteudo_ti_quando_nao_e_ti():
+    # Sem cargo de TI, nao sugere conteudo de TI (evita ruido).
+    corpo = "Concurso para Medico. Conteudo: Banco de Dados de pacientes."
+    d = collector._extrair_detalhes(corpo)
+    assert "conteudo_ti" not in d
+
+
 def test_regiao_artigo_isola_o_corpo():
     html = ("<header><a href='http://x'>menu</a></header>"
             "<article><p>conteudo da materia</p></article>"

@@ -407,7 +407,8 @@ function abrirDetalhe(c) {
 // Rotulos e ordem das informacoes extras (detalhes_json) no detalhe. Os cargos
 // de TI vem primeiro, por serem o foco. A vaga ja e mostrada em "Vagas / Cargo".
 const ROTULOS_DETALHE = {
-  cargos_ti: "Cargos de TI", escolaridade: "Escolaridade", salario: "Salario",
+  cargos_ti: "Cargos de TI", conteudo_ti: "Conteúdo de TI (o que cai)",
+  escolaridade: "Escolaridade", salario: "Salario",
   taxa: "Taxa de inscricao", jornada: "Jornada", banca: "Banca",
   data_prova: "Data da prova", cadastro_reserva: "Cadastro de reserva",
 };

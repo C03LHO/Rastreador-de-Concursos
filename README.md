@@ -43,8 +43,11 @@ Procurar concurso é chato: a informação fica espalhada, alguns sites caem e n
 - 🔄 **Coleta automática** de hora em hora (no boot e via agendador).
 - 🔗 **Link direto** para a página de cada concurso (edital, datas e detalhes).
 - 📅 **Data de encerramento das inscrições**, lida automaticamente da página e do PDF.
-- 🧠 **Informação rica por concurso**: banca, escolaridade, salário, taxa de inscrição e data da prova, extraídos automaticamente.
+- 🧠 **Informação rica por concurso**: banca, escolaridade, salário (faixa), vagas, jornada, data da prova e cargos de TI, extraídos automaticamente.
 - 📄 **Leitura automática do edital em PDF** (quando encontrado) e botão para baixar.
+- 🎯 **Foco em TI**: botão "Só TI" que mostra apenas vagas de tecnologia (fica lembrado), e **"o que cai"** — o conteúdo programático de TI extraído do edital.
+- 📅 **Calendário (.ics)**: adicione prazos de inscrição e datas de prova ao calendário do celular, por concurso ou de todos os favoritos.
+- 🔔 **Resumo diário (digest)**: um único push de manhã com os novos concursos de TI do dia.
 - 🎓 **Treinar com provas anteriores**: busca provas e gabaritos no PCI Concursos por cargo, com link para baixar. Cada concurso também tem um atalho de provas anteriores.
 - ⏳ **Prazo em primeiro lugar**: esconde inscrições já encerradas (com um toque para incluir) e mostra primeiro os concursos que encerram mais cedo, para você não perder nada.
 - ⭐ **Favoritar e acompanhar prazos**: salve concursos e veja-os ordenados pelo prazo de inscrição, com lembrete por push quando o prazo se aproxima.
