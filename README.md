@@ -150,6 +150,8 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `POST` | `/api/notificar-teste` | Dispara uma notificação de teste no ntfy. |
 | `POST` | `/api/ia-teste` | Valida a chave/modelo de IA (Groq). |
 | `POST` | `/api/ia-gerar` | Gera os resumos de IA dos concursos de TI pendentes. |
+| `POST` | `/api/perguntar` | Pergunte ao edital: `{hash, pergunta}` e a IA responde. |
+| `POST` | `/api/backup` | Faz um backup imediato do banco (rotaciona em `MAX_BACKUPS`). |
 | `GET` | `/api/favoritos` | Lista os concursos favoritados (ordenados por prazo). |
 | `POST` | `/api/favoritos/{hash}` | Favorita ou desfavorita um concurso. |
 | `POST` | `/api/coletar` | Força uma coleta imediata (em segundo plano). |

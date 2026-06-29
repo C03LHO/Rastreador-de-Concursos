@@ -267,6 +267,27 @@ body {
 .ia-estudo { margin: 0; padding-left: 18px; }
 .ia-estudo li { font-size: 0.88rem; color: var(--suave); line-height: 1.5; }
 
+/* Pergunte ao edital (IA). */
+.pergunta-box { margin: 4px 0 14px; }
+.pergunta-rotulo { font-size: 0.78rem; font-weight: 700; color: var(--acento); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.pergunta-linha { display: flex; gap: 8px; }
+.pergunta-linha input {
+  flex: 1; padding: 11px 13px; background: var(--card);
+  border: 1px solid var(--borda); border-radius: 11px; color: var(--texto);
+  font: inherit; font-size: 0.92rem;
+}
+.pergunta-linha input:focus { outline: none; border-color: var(--acento); }
+.pergunta-linha button {
+  flex: none; padding: 0 16px; border-radius: 11px; border: none;
+  background: var(--acento); color: #08110f; font: inherit; font-weight: 600; cursor: pointer;
+}
+.pergunta-linha button:disabled { opacity: 0.6; cursor: default; }
+.pergunta-resposta:not(:empty) {
+  margin-top: 10px; padding: 11px 13px; font-size: 0.92rem; line-height: 1.55;
+  color: var(--texto); background: var(--card); border: 1px solid var(--borda);
+  border-radius: 11px; white-space: pre-wrap;
+}
+
 .estado {
   text-align: center; color: var(--suave);
   padding: 60px 24px; font-size: 0.95rem;

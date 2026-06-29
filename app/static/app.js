@@ -383,6 +383,14 @@ function abrirDetalhe(c) {
         Compartilhar
       </button>
     </div>
+    ${c.detalhe_em ? `<div class="pergunta-box">
+      <div class="pergunta-rotulo">🤖 Pergunte ao edital</div>
+      <div class="pergunta-linha">
+        <input id="pergunta-input" type="text" placeholder="Ex: exige nivel superior? qual o conteudo de TI?" autocomplete="off" />
+        <button id="pergunta-btn">Perguntar</button>
+      </div>
+      <div class="pergunta-resposta" id="pergunta-resposta"></div>
+    </div>` : ""}
     <p class="nota-link">${c.detalhe_em
       ? "Datas, edital e informacoes lidos automaticamente da materia e do PDF. O 'site oficial' e o melhor link encontrado &mdash; confirme sempre na pagina do orgao/banca."
       : "Lendo a materia e o edital em segundo plano. As informacoes aparecem em instantes."}</p>
@@ -393,8 +401,35 @@ function abrirDetalhe(c) {
     fecharSheet();
     abrirTreinar(adivinharCargo(c));
   });
+  ligarPergunta(c);
   ligarEstrelas($("sheet-conteudo"));
   abrirSheet();
+}
+
+// Liga o "Pergunte ao edital": manda a pergunta para a IA e mostra a resposta.
+function ligarPergunta(c) {
+  const btn = $("pergunta-btn");
+  if (!btn) return;
+  const perguntar = async () => {
+    const q = $("pergunta-input").value.trim();
+    if (!q) return;
+    const out = $("pergunta-resposta");
+    out.textContent = "Pensando...";
+    btn.disabled = true;
+    try {
+      const r = await (await fetch("/api/perguntar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hash: c.hash, pergunta: q }),
+      })).json();
+      out.textContent = r.ok ? r.resposta : (r.erro || "Nao consegui responder.");
+    } catch (e) { out.textContent = "Erro ao perguntar."; }
+    btn.disabled = false;
+  };
+  btn.addEventListener("click", perguntar);
+  $("pergunta-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") perguntar();
+  });
 }
 
 // Rotulos e ordem das informacoes extras (detalhes_json) no detalhe. Os cargos

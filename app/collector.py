@@ -996,24 +996,11 @@ def _config_ia(perfil=None):
     }
 
 
-def _chamar_ia(cfg, texto):
-    # Chama a API e devolve o JSON do modelo (dict) ou None. Best-effort.
-    prompt = (
-        "A partir do texto do edital abaixo, gere um JSON com exatamente estas "
-        "chaves:\n"
-        '- "resumo": 2 a 3 frases objetivas (orgao, vagas, cargos de TI, '
-        "salario e prazo de inscricao, quando houver).\n"
-        '- "plano_estudo": uma lista (array) de 4 a 8 topicos de TI que o '
-        "candidato deve estudar para ESTE concurso, do mais importante ao menos.\n\n"
-        "Texto do edital:\n<<<\n" + texto[:IA_MAX_CHARS] + "\n>>>"
-    )
-    payload = {
-        "model": cfg["modelo"], "temperature": 0.2, "max_tokens": 700,
-        "messages": [
-            {"role": "system", "content": _IA_SISTEMA},
-            {"role": "user", "content": prompt},
-        ],
-    }
+def _ia_completar(cfg, messages, max_tokens=700, temperature=0.2):
+    # Chamada base ao endpoint compativel com OpenAI. Devolve o texto da
+    # resposta (str) ou None. Best-effort: erros viram None.
+    payload = {"model": cfg["modelo"], "temperature": temperature,
+               "max_tokens": max_tokens, "messages": messages}
     try:
         r = httpx.post(
             cfg["url"], json=payload, timeout=60,
@@ -1023,9 +1010,28 @@ def _chamar_ia(cfg, texto):
         if r.status_code != 200:
             print(f"[ia] HTTP {r.status_code}: {r.text[:160]}")
             return None
-        conteudo = r.json()["choices"][0]["message"]["content"]
+        return r.json()["choices"][0]["message"]["content"]
     except Exception as erro:
         print(f"[ia] erro: {erro}")
+        return None
+
+
+def _chamar_ia(cfg, texto):
+    # Pede o resumo + plano de estudo em JSON e devolve o dict (ou None).
+    prompt = (
+        "A partir do texto do edital abaixo, gere um JSON com exatamente estas "
+        "chaves:\n"
+        '- "resumo": 2 a 3 frases objetivas (orgao, vagas, cargos de TI, '
+        "salario e prazo de inscricao, quando houver).\n"
+        '- "plano_estudo": uma lista (array) de 4 a 8 topicos de TI que o '
+        "candidato deve estudar para ESTE concurso, do mais importante ao menos.\n\n"
+        "Texto do edital:\n<<<\n" + texto[:IA_MAX_CHARS] + "\n>>>"
+    )
+    conteudo = _ia_completar(cfg, [
+        {"role": "system", "content": _IA_SISTEMA},
+        {"role": "user", "content": prompt},
+    ], max_tokens=700)
+    if not conteudo:
         return None
     # Extrai o primeiro bloco {...} (alguns modelos cercam com texto).
     m = re.search(r"\{.*\}", conteudo, re.S)
@@ -1035,6 +1041,38 @@ def _chamar_ia(cfg, texto):
         return json.loads(m.group(0))
     except Exception:
         return None
+
+
+def perguntar_edital(hash_, pergunta):
+    # Responde uma pergunta do usuario com base no texto do edital ja lido.
+    pergunta = (pergunta or "").strip()
+    if not pergunta:
+        return {"ok": False, "erro": "Escreva uma pergunta."}
+    cfg = _config_ia()
+    if not cfg:
+        return {"ok": False, "erro": "Configure a chave de IA no Perfil primeiro."}
+    c = db.get_concurso(hash_)
+    if not c:
+        return {"ok": False, "erro": "Concurso nao encontrado."}
+    texto = " ".join(p for p in (c.get("resumo"), c.get("blob_detalhe")) if p)
+    if len(texto) < 40:
+        return {"ok": False, "erro": "Ainda nao li o edital deste concurso."}
+
+    sistema = (
+        "Voce responde perguntas sobre um concurso publico SOMENTE com base no "
+        "texto do edital fornecido. Responda em portugues, curto e direto. Se a "
+        "informacao nao estiver no texto, responda exatamente: "
+        "'Nao consta no edital lido.'"
+    )
+    usuario = (f"Pergunta: {pergunta}\n\nTexto do edital:\n<<<\n"
+               f"{texto[:IA_MAX_CHARS]}\n>>>")
+    resposta = _ia_completar(cfg, [
+        {"role": "system", "content": sistema},
+        {"role": "user", "content": usuario},
+    ], max_tokens=400)
+    if not resposta:
+        return {"ok": False, "erro": "A IA nao respondeu. Tente de novo."}
+    return {"ok": True, "resposta": resposta.strip()}
 
 
 def gerar_resumo_ia(cfg, texto):

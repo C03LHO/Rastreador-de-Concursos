@@ -125,6 +125,28 @@ def test_gerar_resumo_ia_none_quando_modelo_falha(monkeypatch):
     assert collector.gerar_resumo_ia({"modelo": "x"}, "texto") is None
 
 
+def test_perguntar_edital_sem_chave(monkeypatch):
+    monkeypatch.setattr(collector, "_config_ia", lambda perfil=None: None)
+    r = collector.perguntar_edital("h1", "exige superior?")
+    assert r["ok"] is False and "chave" in r["erro"].lower()
+
+
+def test_perguntar_edital_pergunta_vazia():
+    r = collector.perguntar_edital("h1", "   ")
+    assert r["ok"] is False
+
+
+def test_perguntar_edital_responde(monkeypatch):
+    monkeypatch.setattr(collector, "_config_ia", lambda perfil=None: {"modelo": "x"})
+    monkeypatch.setattr(collector.db, "get_concurso",
+                        lambda h: {"resumo": "Concurso de TI", "blob_detalhe": "exige nivel superior e redes " * 5})
+    monkeypatch.setattr(collector, "_ia_completar",
+                        lambda cfg, msgs, **kw: "Sim, exige nivel superior.")
+    r = collector.perguntar_edital("h1", "exige superior?")
+    assert r["ok"] is True
+    assert "superior" in r["resposta"].lower()
+
+
 def test_data_prova_iso():
     assert collector.data_prova_iso("15 de agosto de 2026") == "2026-08-15"
     assert collector.data_prova_iso("Prova em 3 de marco de 2027") == "2027-03-03"

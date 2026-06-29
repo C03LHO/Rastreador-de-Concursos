@@ -370,6 +370,16 @@ def api_ia_gerar():
     return {"ok": True, "mensagem": "gerando resumos de IA em background"}
 
 
+@app.post("/api/perguntar")
+async def api_perguntar(request: Request):
+    # Pergunte ao edital: recebe {hash, pergunta} e responde via IA.
+    try:
+        corpo = await request.json()
+    except Exception:
+        corpo = {}
+    return collector.perguntar_edital(corpo.get("hash", ""), corpo.get("pergunta", ""))
+
+
 @app.post("/api/backup")
 def api_backup():
     # Faz um backup imediato do banco (mantendo os N mais recentes).
