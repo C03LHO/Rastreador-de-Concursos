@@ -44,32 +44,12 @@ async function montarChips() {
   });
 }
 
-// Seleciona uma area (chip ou toggle "So TI"), sincroniza os chips ativos e
-// lembra a preferencia de TI. Nao dispara a busca (quem chama decide).
+// Seleciona uma area (chip) e sincroniza quais chips ficam ativos.
+// Nao dispara a busca (quem chama decide).
 function selecionarArea(area) {
   filtros.area = area;
   [...$("chips").children].forEach((c) =>
     c.classList.toggle("ativo", (c.dataset.area || "") === area));
-  sincronizarToggleTI();
-}
-
-// Mantem o botao "So TI" coerente com o filtro e guarda a preferencia, para o
-// app abrir ja focado em TI nas proximas vezes.
-function sincronizarToggleTI() {
-  const on = filtros.area === "ti";
-  const t = $("toggle-ti");
-  if (t) {
-    t.classList.toggle("on", on);
-    t.setAttribute("aria-pressed", on ? "true" : "false");
-  }
-  try { localStorage.setItem("soti", on ? "1" : "0"); } catch (e) {}
-}
-
-function montarToggleTI() {
-  $("toggle-ti").addEventListener("click", () => {
-    selecionarArea(filtros.area === "ti" ? "" : "ti");
-    buscar();
-  });
 }
 
 function montarTipo() {
@@ -206,7 +186,6 @@ function limparFiltros() {
   $("uf").value = "";
   [...$("chips").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
   [...$("seg-tipo").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
-  sincronizarToggleTI();
   buscar();
 }
 
@@ -790,19 +769,15 @@ function esc(t) {
 
 // ---------- Inicio ----------
 montarUFs();
-montarToggleTI();
 montarChipsPA();
 montarTipo();
 montarBusca();
 montarAtualizar();
 montarPerfil();
 atualizarStatus();
-// Monta os chips e, com eles prontos, aplica a preferencia "So TI" (se ligada)
-// antes da primeira busca, para o app ja abrir focado em TI.
-montarChips().then(() => {
-  try { if (localStorage.getItem("soti") === "1") selecionarArea("ti"); } catch (e) {}
-  return carregarFavoritos();
-}).then(() => buscar());
+montarChips()
+  .then(() => carregarFavoritos())
+  .then(() => buscar());
 acompanharColeta();
 registrarSW();
 setInterval(atualizarStatus, 60000);
