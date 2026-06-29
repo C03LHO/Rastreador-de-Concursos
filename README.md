@@ -126,6 +126,7 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `LOTE_DETALHES` | `20` | Quantos concursos ler por lote no enriquecimento. |
 | `HORA_AVISO_PRAZO` | `8` | Hora do lembrete diário de prazo dos favoritos. |
 | `PRAZO_AVISO_DIAS` | `3` | Avisar quando um favorito encerrar em até N dias. |
+| `HORA_DIGEST` | `7` | Hora do resumo diário (digest) dos novos concursos de TI. |
 
 ## 🔌 API REST
 
@@ -134,6 +135,7 @@ Tudo é configurável por variáveis de ambiente (já definidas no `docker-compo
 | `GET` | `/` | Serve a tela web (PWA). |
 | `GET` | `/api/concursos` | Lista os concursos com filtros opcionais. |
 | `GET` | `/api/concursos.csv` | Exporta os concursos filtrados em CSV (mesmos filtros). |
+| `GET` | `/api/calendario.ics` | Calendário (.ics) com prazos e provas dos favoritos (ou `?hash=` de um). |
 | `GET` | `/api/areas` | Lista as áreas disponíveis. |
 | `GET` | `/api/status` | Total no banco, progresso da leitura de editais e última coleta. |
 | `GET` | `/api/health` | Verificação leve (usada pelo healthcheck do Docker). |

@@ -37,14 +37,38 @@ async function montarChips() {
   todas.forEach((area) => {
     const b = document.createElement("button");
     b.className = "chip" + (area === "" ? " ativo" : "");
+    b.dataset.area = area;
     b.textContent = area === "" ? "Todas" : (ROTULOS[area] || area);
-    b.addEventListener("click", () => {
-      filtros.area = area;
-      [...box.children].forEach((c) => c.classList.remove("ativo"));
-      b.classList.add("ativo");
-      buscar();
-    });
+    b.addEventListener("click", () => { selecionarArea(area); buscar(); });
     box.appendChild(b);
+  });
+}
+
+// Seleciona uma area (chip ou toggle "So TI"), sincroniza os chips ativos e
+// lembra a preferencia de TI. Nao dispara a busca (quem chama decide).
+function selecionarArea(area) {
+  filtros.area = area;
+  [...$("chips").children].forEach((c) =>
+    c.classList.toggle("ativo", (c.dataset.area || "") === area));
+  sincronizarToggleTI();
+}
+
+// Mantem o botao "So TI" coerente com o filtro e guarda a preferencia, para o
+// app abrir ja focado em TI nas proximas vezes.
+function sincronizarToggleTI() {
+  const on = filtros.area === "ti";
+  const t = $("toggle-ti");
+  if (t) {
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  try { localStorage.setItem("soti", on ? "1" : "0"); } catch (e) {}
+}
+
+function montarToggleTI() {
+  $("toggle-ti").addEventListener("click", () => {
+    selecionarArea(filtros.area === "ti" ? "" : "ti");
+    buscar();
   });
 }
 
@@ -182,6 +206,7 @@ function limparFiltros() {
   $("uf").value = "";
   [...$("chips").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
   [...$("seg-tipo").children].forEach((c, i) => c.classList.toggle("ativo", i === 0));
+  sincronizarToggleTI();
   buscar();
 }
 
@@ -352,6 +377,10 @@ function abrirDetalhe(c) {
       ${c.link_oficial ? `<a class="acao acao-primaria" href="${esc(c.link_oficial)}" target="_blank" rel="noopener">${icoLink} Site oficial / inscricao</a>` : ""}
       ${c.pdf_url ? `<a class="acao ${c.link_oficial ? "acao-secundaria" : "acao-primaria"}" href="${esc(c.pdf_url)}" target="_blank" rel="noopener">${icoPdf} Baixar edital (PDF)</a>` : ""}
       ${acaoMateria.replace("__CLS__", temPrincipal ? "acao-secundaria" : "acao-primaria")}
+      ${(c.data_fim || detalhesDe(c).data_prova) ? `<a class="acao acao-secundaria" href="/api/calendario.ics?hash=${encodeURIComponent(c.hash)}" download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Adicionar ao calendario
+      </a>` : ""}
       <button class="acao acao-secundaria" id="btn-provas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         Provas anteriores
@@ -718,14 +747,19 @@ function esc(t) {
 
 // ---------- Inicio ----------
 montarUFs();
-montarChips();
+montarToggleTI();
 montarChipsPA();
 montarTipo();
 montarBusca();
 montarAtualizar();
 montarPerfil();
 atualizarStatus();
-carregarFavoritos().then(() => buscar());
+// Monta os chips e, com eles prontos, aplica a preferencia "So TI" (se ligada)
+// antes da primeira busca, para o app ja abrir focado em TI.
+montarChips().then(() => {
+  try { if (localStorage.getItem("soti") === "1") selecionarArea("ti"); } catch (e) {}
+  return carregarFavoritos();
+}).then(() => buscar());
 acompanharColeta();
 registrarSW();
 setInterval(atualizarStatus, 60000);

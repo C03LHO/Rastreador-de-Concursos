@@ -25,6 +25,8 @@ services:
       - HORA_AVISO_PRAZO=8
       # Avisar quando um favorito encerrar em ate N dias.
       - PRAZO_AVISO_DIAS=3
+      # Hora (0-23) do resumo diario (digest) dos novos concursos de TI.
+      - HORA_DIGEST=7
     volumes:
       # Volume nomeado para o arquivo SQLite sobreviver a recriacao do container.
       - concursos_dados:/data

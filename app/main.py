@@ -11,6 +11,7 @@ import json
 import os
 import threading
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -67,6 +68,18 @@ def _agendar():
         hour=hora_aviso,
         minute=0,
         id="aviso_prazos",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    # Resumo diario (digest) dos novos concursos de TI das ultimas 24h.
+    hora_digest = int(os.environ.get("HORA_DIGEST", "7"))
+    scheduler.add_job(
+        collector.enviar_digest_diario,
+        "cron",
+        hour=hora_digest,
+        minute=0,
+        id="digest_diario",
         max_instances=1,
         coalesce=True,
         replace_existing=True,
@@ -192,6 +205,75 @@ def api_concursos_csv(
         content=conteudo,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="concursos.csv"'},
+    )
+
+
+def _ics_escape(texto):
+    return (str(texto or "").replace("\\", "\\\\").replace(";", "\\;")
+            .replace(",", "\\,").replace("\r", "").replace("\n", "\\n"))
+
+
+def _linhas_evento(uid, data_iso, titulo, descricao, url, dtstamp):
+    # Monta um VEVENT de dia inteiro (DTEND = dia seguinte, padrao iCalendar).
+    ymd = data_iso.replace("-", "")
+    try:
+        fim = (date.fromisoformat(data_iso) + timedelta(days=1)).isoformat().replace("-", "")
+    except Exception:
+        fim = ymd
+    desc = _ics_escape((descricao or "") + (("\n" + url) if url else ""))
+    linhas = [
+        "BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{dtstamp}",
+        f"DTSTART;VALUE=DATE:{ymd}", f"DTEND;VALUE=DATE:{fim}",
+        f"SUMMARY:{_ics_escape(titulo)}", f"DESCRIPTION:{desc}",
+    ]
+    if url:
+        linhas.append(f"URL:{url}")
+    linhas.append("END:VEVENT")
+    return linhas
+
+
+@app.get("/api/calendario.ics")
+def api_calendario(hash_: str = Query(default=None, alias="hash")):
+    # Gera um arquivo .ics (calendario) com os PRAZOS de inscricao e as DATAS de
+    # prova. Sem 'hash', exporta os favoritos; com 'hash', exporta um concurso.
+    if hash_:
+        c = db.get_concurso(hash_)
+        concursos = [c] if c else []
+    else:
+        concursos = db.listar_favoritos()
+
+    dtstamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    linhas = [
+        "BEGIN:VCALENDAR", "VERSION:2.0",
+        "PRODID:-//Rastreador de Concursos//PT-BR//", "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH", "X-WR-CALNAME:Concursos",
+    ]
+    for c in concursos:
+        if not c:
+            continue
+        orgao = c.get("orgao") or "Concurso"
+        link = c.get("link") or ""
+        titulo = c.get("titulo") or ""
+        if c.get("data_fim"):
+            linhas += _linhas_evento(
+                f"{c['hash']}-fim@rastreador-concursos", c["data_fim"],
+                f"Encerra inscricao: {orgao}", titulo, link, dtstamp)
+        try:
+            det = json.loads(c.get("detalhes_json") or "{}")
+        except Exception:
+            det = {}
+        prova_iso = collector.data_prova_iso(det.get("data_prova", ""))
+        if prova_iso:
+            linhas += _linhas_evento(
+                f"{c['hash']}-prova@rastreador-concursos", prova_iso,
+                f"Prova: {orgao}", titulo, link, dtstamp)
+    linhas.append("END:VCALENDAR")
+
+    conteudo = "\r\n".join(linhas)
+    return Response(
+        content=conteudo,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="concursos.ics"'},
     )
 
 

@@ -376,6 +376,17 @@ def alternar_favorito(hash_):
         conn.close()
 
 
+def get_concurso(hash_):
+    # Le um concurso pelo hash (ou None). Usado, por exemplo, no .ics de um item.
+    conn = conectar()
+    try:
+        cur = conn.execute("SELECT * FROM concursos WHERE hash = ?", (hash_,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def hashes_favoritos():
     # Lista os hashes favoritados (para a tela marcar as estrelas).
     conn = conectar()

@@ -93,6 +93,12 @@ def test_para_linha_db_monta_blob_sem_acento():
     assert linha["blob"] == linha["blob"].lower()
 
 
+def test_data_prova_iso():
+    assert collector.data_prova_iso("15 de agosto de 2026") == "2026-08-15"
+    assert collector.data_prova_iso("Prova em 3 de marco de 2027") == "2027-03-03"
+    assert collector.data_prova_iso("sem data aqui") == ""
+
+
 def test_slug_para_busca_de_provas():
     assert collector._slug("Agente Administrativo") == "agente-administrativo"
     assert collector._slug("Tecnico de Enfermagem") == "tecnico-de-enfermagem"

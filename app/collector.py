@@ -455,6 +455,21 @@ def _extrair_periodo(texto):
     return "", isos[0]
 
 
+def data_prova_iso(texto):
+    # Converte "15 de agosto de 2026" -> "2026-08-15" (para o calendario .ics).
+    # Sem ano no texto, assume o ano atual. Retorna "" se nao reconhecer.
+    if not texto:
+        return ""
+    m = _RE_DATA_PT.search(texto)
+    if not m:
+        return ""
+    mes = _mes_num(m.group(2))
+    if not mes:
+        return ""
+    ano = int(m.group(3)) if m.group(3) else datetime.now().year
+    return f"{ano:04d}-{mes:02d}-{int(m.group(1)):02d}"
+
+
 _REDES = (
     "facebook", "twitter", "x.com", "whatsapp", "wa.me", "t.me", "telegram",
     "instagram", "linkedin", "youtube", "/share", "pinterest",
@@ -1038,6 +1053,34 @@ def enviar_notificacao_teste(perfil):
         "Rastreador de Concursos",
         "Funcionou! Voce vai receber aqui os novos concursos do seu interesse.",
     )
+
+
+def enviar_digest_diario():
+    # Resumo diario via ntfy dos concursos de TI (foco) que surgiram nas
+    # ultimas 24h. Um unico push de manha, em vez de varios item a item.
+    perfil = carregar_perfil()
+    if not perfil.get("notificar") or not perfil.get("ntfy_topico"):
+        return
+    from datetime import timedelta
+    from .areas import AREAS
+    desde = (datetime.now() - timedelta(hours=24)).isoformat(timespec="seconds")
+    abertos_ti = db.buscar_concursos(area_palavras=AREAS["ti"], tipo="aberto", limite=500)
+    novos = [c for c in abertos_ti if (c.get("primeira_vez") or "") >= desde]
+    if not novos:
+        return
+
+    linhas = []
+    for c in novos[:15]:
+        try:
+            det = json.loads(c.get("detalhes_json") or "{}")
+        except Exception:
+            det = {}
+        extra = f" - {det['salario']}" if det.get("salario") else ""
+        linhas.append(f"- {c.get('orgao','')} ({c.get('uf','').upper()}){extra}")
+
+    titulo = f"{len(novos)} novo(s) concurso(s) de TI hoje"
+    _enviar_ntfy(perfil, titulo, "\n".join(linhas), perfil.get("app_url", ""))
+    print(f"[digest] {len(novos)} concursos de TI no resumo diario")
 
 
 # ----------------------------------------------------------------------------
